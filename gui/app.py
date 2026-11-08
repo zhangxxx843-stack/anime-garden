@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import tkinter as tk
+import tkinter.font as tkfont
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -78,6 +80,12 @@ def _money(cents: int) -> str:
     return f"{sign}¥{absolute // 100}.{absolute % 100:02d}"
 
 
+def expense_display_text(note: str, category_name: str) -> str:
+    """Return the compact text shown in the expense list and selection card."""
+
+    return note.strip() or category_name
+
+
 def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -101,7 +109,8 @@ class LedgerApp:
             "border": "#dbe3dc",
             "danger": "#a33b32",
         }
-        self.ui_font = "Noto Sans CJK SC"
+        self.ui_font = "TkDefaultFont"
+        self._register_cjk_font()
         self.state: dict[str, object] = {"categories": [], "expenses": [], "budgets": {}}
         self.category_by_id: dict[str, dict[str, str]] = {}
         self.selected_expense: dict[str, object] | None = None
@@ -117,6 +126,41 @@ class LedgerApp:
         self._build_layout()
         self.refresh()
 
+    def _register_cjk_font(self) -> None:
+        """Make the bundled Ubuntu Tk session use a real Chinese-capable font."""
+
+        if os.name != "posix":
+            return
+        candidates = (
+            PROJECT_DIR / ".cache" / "tk-fonts" / "wqy-zenhei.ttc",
+            Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+            Path("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
+        )
+        source = next((path for path in candidates if path.exists()), None)
+        xset = shutil.which("xset")
+        mkfontscale = shutil.which("mkfontscale")
+        mkfontdir = shutil.which("mkfontdir")
+        if source is None or not xset or not mkfontscale or not mkfontdir:
+            return
+        font_dir = PROJECT_DIR / ".cache" / "tk-fonts"
+        font_dir.mkdir(parents=True, exist_ok=True)
+        target = font_dir / source.name
+        if target.resolve() != source.resolve() and not target.exists():
+            try:
+                target.symlink_to(source)
+            except OSError:
+                return
+        if not (font_dir / "fonts.dir").exists():
+            subprocess.run([mkfontscale, str(font_dir)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run([mkfontdir, str(font_dir)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run([xset, "+fp", str(font_dir)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run([xset, "fp", "rehash"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        families = {family.casefold(): family for family in tkfont.families(self.root)}
+        for family_name in ("wenquanyi zen hei", "droid sans fallback"):
+            if family_name in families:
+                self.ui_font = families[family_name]
+                break
+
     def _configure_styles(self) -> None:
         style = ttk.Style(self.root)
         style.theme_use("clam")
@@ -124,24 +168,24 @@ class LedgerApp:
         style.configure("App.TFrame", background=palette["background"])
         style.configure("Surface.TFrame", background=palette["surface"])
         style.configure("SurfaceAlt.TFrame", background=palette["surface_alt"])
-        style.configure("TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 10))
-        style.configure("Card.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 10))
-        style.configure("Muted.TLabel", background=palette["background"], foreground=palette["muted"], font=(self.ui_font, 10))
-        style.configure("CardMuted.TLabel", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 10))
-        style.configure("Alt.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 10))
-        style.configure("AltMuted.TLabel", background=palette["surface_alt"], foreground=palette["muted"], font=(self.ui_font, 10))
+        style.configure("TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 12))
+        style.configure("Card.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 12))
+        style.configure("Muted.TLabel", background=palette["background"], foreground=palette["muted"], font=(self.ui_font, 12))
+        style.configure("CardMuted.TLabel", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 12))
+        style.configure("Alt.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 12))
+        style.configure("AltMuted.TLabel", background=palette["surface_alt"], foreground=palette["muted"], font=(self.ui_font, 12))
         style.configure("AltMoney.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 26, "bold"))
-        style.configure("Heading.TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 17, "bold"))
-        style.configure("CardHeading.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 12, "bold"))
+        style.configure("Heading.TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 18, "bold"))
+        style.configure("CardHeading.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 13, "bold"))
         style.configure("Money.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 25, "bold"))
-        style.configure("Accent.TButton", background=palette["green"], foreground="#ffffff", padding=(15, 9), borderwidth=0, font=(self.ui_font, 10, "bold"))
+        style.configure("Accent.TButton", background=palette["green"], foreground="#ffffff", padding=(15, 9), borderwidth=0, font=(self.ui_font, 12, "bold"))
         style.map("Accent.TButton", background=[("active", palette["green_dark"]), ("pressed", palette["green_dark"])])
-        style.configure("Quiet.TButton", background=palette["surface"], foreground=palette["text"], padding=(12, 8), borderwidth=0, font=(self.ui_font, 10))
+        style.configure("Quiet.TButton", background=palette["surface"], foreground=palette["text"], padding=(12, 8), borderwidth=0, font=(self.ui_font, 12))
         style.map("Quiet.TButton", background=[("active", palette["surface_alt"])])
-        style.configure("TRadiobutton", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 10))
-        style.configure("TEntry", font=(self.ui_font, 10), padding=5)
-        style.configure("Treeview", background=palette["surface"], fieldbackground=palette["surface"], foreground=palette["text"], rowheight=42, borderwidth=0, font=(self.ui_font, 10))
-        style.configure("Treeview.Heading", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 10, "bold"), relief="flat")
+        style.configure("TRadiobutton", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 12))
+        style.configure("TEntry", font=(self.ui_font, 12), padding=5)
+        style.configure("Treeview", background=palette["surface"], fieldbackground=palette["surface"], foreground=palette["text"], rowheight=46, borderwidth=0, font=(self.ui_font, 12))
+        style.configure("Treeview.Heading", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 12, "bold"), relief="flat")
         style.map("Treeview", background=[("selected", "#dcefe0")], foreground=[("selected", palette["text"])])
         style.configure("Horizontal.TProgressbar", background=palette["green"], troughcolor="#dfe8df", borderwidth=0, lightcolor=palette["green"], darkcolor=palette["green"])
 
@@ -157,8 +201,8 @@ class LedgerApp:
         sidebar = tk.Frame(shell, bg=self.colors["sidebar"], width=230)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
-        tk.Label(sidebar, text="随手记", bg=self.colors["sidebar"], fg="#ffffff", font=(self.ui_font, 24, "bold")).pack(anchor="w", padx=26, pady=(34, 2))
-        tk.Label(sidebar, text="离线个人支出", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 10)).pack(anchor="w", padx=28, pady=(0, 30))
+        tk.Label(sidebar, text="随手记", bg=self.colors["sidebar"], fg="#ffffff", font=(self.ui_font, 26, "bold")).pack(anchor="w", padx=26, pady=(34, 2))
+        tk.Label(sidebar, text="离线个人支出", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 12)).pack(anchor="w", padx=28, pady=(0, 30))
         add_button = tk.Button(
             sidebar,
             text="＋  记一笔",
@@ -172,7 +216,7 @@ class LedgerApp:
             highlightthickness=0,
             overrelief="flat",
             cursor="hand2",
-            font=(self.ui_font, 12, "bold"),
+            font=(self.ui_font, 13, "bold"),
             padx=14,
             pady=12,
         )
@@ -198,15 +242,15 @@ class LedgerApp:
                 highlightthickness=0,
                 overrelief="flat",
                 cursor="hand2",
-                font=(self.ui_font, 11),
+                font=(self.ui_font, 12),
                 padx=12,
                 pady=11,
             )
             button.pack(fill="x", padx=12, pady=2)
             self.nav_buttons[key] = button
         tk.Frame(sidebar, bg=self.colors["sidebar"]).pack(fill="both", expand=True)
-        tk.Label(sidebar, text="Ubuntu 试用版", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 9)).pack(anchor="w", padx=28, pady=(0, 4))
-        tk.Label(sidebar, text="数据保存在本地", bg=self.colors["sidebar"], fg="#8eada0", font=(self.ui_font, 9)).pack(anchor="w", padx=28, pady=(0, 24))
+        tk.Label(sidebar, text="Ubuntu 试用版", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 10)).pack(anchor="w", padx=28, pady=(0, 4))
+        tk.Label(sidebar, text="数据保存在本地", bg=self.colors["sidebar"], fg="#8eada0", font=(self.ui_font, 10)).pack(anchor="w", padx=28, pady=(0, 24))
 
         content = ttk.Frame(shell, style="App.TFrame", padding=(32, 26, 32, 28))
         content.pack(side="left", fill="both", expand=True)
@@ -252,7 +296,7 @@ class LedgerApp:
     def _build_detail_tab(self) -> None:
         controls = self._card(self.detail_tab)
         controls.pack(fill="x", pady=(0, 14))
-        ttk.Label(controls, text="查看范围", style="Card.TLabel", font=(self.ui_font, 10, "bold")).pack(side="left")
+        ttk.Label(controls, text="查看范围", style="Card.TLabel", font=(self.ui_font, 12, "bold")).pack(side="left")
         ttk.Radiobutton(controls, text="单日", variable=self.range_var, value="day", command=self.refresh_detail).pack(side="left", padx=(14, 0))
         ttk.Radiobutton(controls, text="整月", variable=self.range_var, value="month", command=self.refresh_detail).pack(side="left")
         ttk.Label(controls, text="日期", style="CardMuted.TLabel").pack(side="left", padx=(26, 4))
@@ -278,13 +322,14 @@ class LedgerApp:
         table_frame = self._card(self.detail_tab)
         table_frame.pack(fill="both", expand=True)
         ttk.Label(table_frame, text="账单记录", style="CardHeading.TLabel").pack(anchor="w", pady=(0, 10))
-        columns = ("date", "category", "amount", "note")
+        columns = ("date", "content", "amount")
         self.expense_tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
-        headings = {"date": "日期", "category": "大类", "amount": "金额", "note": "备注"}
-        widths = {"date": 120, "category": 130, "amount": 120, "note": 500}
+        headings = {"date": "日期", "content": "账单内容", "amount": "金额"}
+        widths = {"date": 150, "content": 520, "amount": 150}
         for key in columns:
-            self.expense_tree.heading(key, text=headings[key])
-            self.expense_tree.column(key, width=widths[key], anchor="e" if key == "amount" else "w")
+            anchor = "e" if key == "amount" else "w"
+            self.expense_tree.heading(key, text=headings[key], anchor=anchor)
+            self.expense_tree.column(key, width=widths[key], minwidth=widths[key], anchor=anchor, stretch=key == "content")
         self.expense_tree.pack(side="left", fill="both", expand=True)
         scroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.expense_tree.yview)
         scroll.pack(side="right", fill="y")
@@ -308,7 +353,7 @@ class LedgerApp:
     def _build_stats_tab(self) -> None:
         top = self._card(self.stats_tab)
         top.pack(fill="x", pady=(0, 14))
-        ttk.Label(top, text="统计月份", style="Card.TLabel", font=(self.ui_font, 10, "bold")).pack(side="left")
+        ttk.Label(top, text="统计月份", style="Card.TLabel", font=(self.ui_font, 12, "bold")).pack(side="left")
         ttk.Entry(top, textvariable=self.month_var, width=10).pack(side="left", padx=6)
         ttk.Button(top, text="刷新统计", style="Quiet.TButton", command=self.refresh_stats).pack(side="left")
         self.stats_total_var = tk.StringVar(value="¥0.00")
@@ -344,7 +389,7 @@ class LedgerApp:
         ttk.Entry(form, textvariable=self.budget_input_var, width=12).grid(row=1, column=1, sticky="w", padx=8)
         ttk.Button(form, text="保存预算", style="Accent.TButton", command=self.save_budget).grid(row=1, column=2, padx=8)
         self.budget_status_var = tk.StringVar(value="尚未设置预算")
-        ttk.Label(card, textvariable=self.budget_status_var, style="CardHeading.TLabel", font=(self.ui_font, 14)).grid(row=2, column=0, columnspan=3, sticky="w", pady=(24, 8))
+        ttk.Label(card, textvariable=self.budget_status_var, style="CardHeading.TLabel", font=(self.ui_font, 15)).grid(row=2, column=0, columnspan=3, sticky="w", pady=(24, 8))
         self.budget_progress = ttk.Progressbar(card, orient="horizontal", length=520, mode="determinate", maximum=100)
         self.budget_progress.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         self.budget_hint_var = tk.StringVar(value="")
@@ -439,8 +484,8 @@ class LedgerApp:
             self.detail_empty_label.place(relx=0.5, rely=0.56, anchor="center")
         for item in selected:
             category = self.category_by_id.get(str(item["category_id"]), {"name": "未知分类"})["name"]
-            note = str(item["note"]) or "未填写备注"
-            self.expense_tree.insert("", "end", iid=str(item["id"]), values=(item["date"], category, _money(int(item["amount"])), note))
+            content = expense_display_text(str(item["note"]), category)
+            self.expense_tree.insert("", "end", iid=str(item["id"]), values=(item["date"], content, _money(int(item["amount"]))))
         self.selected_expense = None
         self.detail_selection_var.set("选择一笔账单查看详情")
 
@@ -576,7 +621,8 @@ class LedgerApp:
         self.selected_expense = next((item for item in self.state["expenses"] if item["id"] == expense_id), None)  # type: ignore[index]
         if self.selected_expense:
             category = self.category_by_id.get(str(self.selected_expense["category_id"]), {"name": "未知分类"})["name"]
-            self.detail_selection_var.set(f"{category} · {self.selected_expense['note'] or '未填写备注'}")
+            content = expense_display_text(str(self.selected_expense["note"]), category)
+            self.detail_selection_var.set(content)
 
     def edit_selected(self) -> None:
         if not self.selected_expense:

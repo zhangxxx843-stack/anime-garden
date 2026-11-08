@@ -1,6 +1,6 @@
 import unittest
 
-from app import build_command, parse_snapshot
+from app import build_command, expense_display_text, parse_snapshot
 
 
 class GuiProtocolTest(unittest.TestCase):
@@ -18,6 +18,10 @@ B\t2026-11\t10000\t2026-11-08
         self.assertEqual(parsed["categories"][0]["name"], "餐饮")
         self.assertEqual(parsed["expenses"][0]["amount"], 1800)
         self.assertEqual(parsed["budgets"]["2026-11"]["amount"], 10000)
+
+    def test_expense_display_prefers_note_and_falls_back_to_category(self):
+        self.assertEqual(expense_display_text("午餐 · 食堂", "餐饮"), "午餐 · 食堂")
+        self.assertEqual(expense_display_text("  ", "餐饮"), "餐饮")
 
 
 if __name__ == "__main__":
