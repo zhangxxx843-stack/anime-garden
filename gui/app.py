@@ -86,8 +86,22 @@ class LedgerApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("随手记 · V1.0")
-        self.root.geometry("1120x720")
-        self.root.minsize(900, 620)
+        self.root.geometry("1240x800")
+        self.root.minsize(980, 680)
+        self.colors = {
+            "background": "#f7f4ee",
+            "surface": "#ffffff",
+            "surface_alt": "#edf5e9",
+            "sidebar": "#163d31",
+            "sidebar_muted": "#b8d0c1",
+            "green": "#16784d",
+            "green_dark": "#0f5e3d",
+            "text": "#193029",
+            "muted": "#6c7c74",
+            "border": "#dbe3dc",
+            "danger": "#a33b32",
+        }
+        self.ui_font = "Noto Sans CJK SC"
         self.state: dict[str, object] = {"categories": [], "expenses": [], "budgets": {}}
         self.category_by_id: dict[str, dict[str, str]] = {}
         self.selected_expense: dict[str, object] | None = None
@@ -95,66 +109,175 @@ class LedgerApp:
         self.month_var = tk.StringVar(value=datetime.now().strftime("%Y-%m"))
         self.range_var = tk.StringVar(value="day")
         self.status_var = tk.StringVar(value="")
+        self.detail_scope_title_var = tk.StringVar(value="今日支出")
+        self.page_title_var = tk.StringVar(value="明细")
+        self.page_subtitle_var = tk.StringVar(value="查看今天和本月的支出记录")
+        self.nav_buttons: dict[str, tk.Button] = {}
+        self.pages: dict[str, ttk.Frame] = {}
         self._build_layout()
         self.refresh()
 
+    def _configure_styles(self) -> None:
+        style = ttk.Style(self.root)
+        style.theme_use("clam")
+        palette = self.colors
+        style.configure("App.TFrame", background=palette["background"])
+        style.configure("Surface.TFrame", background=palette["surface"])
+        style.configure("SurfaceAlt.TFrame", background=palette["surface_alt"])
+        style.configure("TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 10))
+        style.configure("Card.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 10))
+        style.configure("Muted.TLabel", background=palette["background"], foreground=palette["muted"], font=(self.ui_font, 10))
+        style.configure("CardMuted.TLabel", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 10))
+        style.configure("Alt.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 10))
+        style.configure("AltMuted.TLabel", background=palette["surface_alt"], foreground=palette["muted"], font=(self.ui_font, 10))
+        style.configure("AltMoney.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 26, "bold"))
+        style.configure("Heading.TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 17, "bold"))
+        style.configure("CardHeading.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 12, "bold"))
+        style.configure("Money.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 25, "bold"))
+        style.configure("Accent.TButton", background=palette["green"], foreground="#ffffff", padding=(15, 9), borderwidth=0, font=(self.ui_font, 10, "bold"))
+        style.map("Accent.TButton", background=[("active", palette["green_dark"]), ("pressed", palette["green_dark"])])
+        style.configure("Quiet.TButton", background=palette["surface"], foreground=palette["text"], padding=(12, 8), borderwidth=0, font=(self.ui_font, 10))
+        style.map("Quiet.TButton", background=[("active", palette["surface_alt"])])
+        style.configure("TRadiobutton", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 10))
+        style.configure("TEntry", font=(self.ui_font, 10), padding=5)
+        style.configure("Treeview", background=palette["surface"], fieldbackground=palette["surface"], foreground=palette["text"], rowheight=42, borderwidth=0, font=(self.ui_font, 10))
+        style.configure("Treeview.Heading", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 10, "bold"), relief="flat")
+        style.map("Treeview", background=[("selected", "#dcefe0")], foreground=[("selected", palette["text"])])
+        style.configure("Horizontal.TProgressbar", background=palette["green"], troughcolor="#dfe8df", borderwidth=0, lightcolor=palette["green"], darkcolor=palette["green"])
+
+    def _card(self, parent: tk.Misc, style: str = "Surface.TFrame") -> ttk.Frame:
+        return ttk.Frame(parent, style=style, padding=18)
+
     def _build_layout(self) -> None:
-        outer = ttk.Frame(self.root, padding=18)
-        outer.pack(fill="both", expand=True)
+        self._configure_styles()
+        self.root.configure(bg=self.colors["background"])
+        shell = tk.Frame(self.root, bg=self.colors["background"])
+        shell.pack(fill="both", expand=True)
 
-        header = ttk.Frame(outer)
-        header.pack(fill="x", pady=(0, 12))
-        ttk.Label(header, text="随手记", font=("Sans", 24, "bold")).pack(side="left")
-        ttk.Label(header, text="离线个人支出", foreground="#51605a").pack(side="left", padx=(12, 0), pady=(8, 0))
-        ttk.Button(header, text="刷新", command=self.refresh).pack(side="right")
-        ttk.Label(header, textvariable=self.status_var, foreground="#1d604b").pack(side="right", padx=12)
+        sidebar = tk.Frame(shell, bg=self.colors["sidebar"], width=230)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+        tk.Label(sidebar, text="随手记", bg=self.colors["sidebar"], fg="#ffffff", font=(self.ui_font, 24, "bold")).pack(anchor="w", padx=26, pady=(34, 2))
+        tk.Label(sidebar, text="离线个人支出", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 10)).pack(anchor="w", padx=28, pady=(0, 30))
+        add_button = tk.Button(
+            sidebar,
+            text="＋  记一笔",
+            command=self.open_category_picker,
+            bg=self.colors["green"],
+            fg="#ffffff",
+            activebackground=self.colors["green_dark"],
+            activeforeground="#ffffff",
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            overrelief="flat",
+            cursor="hand2",
+            font=(self.ui_font, 12, "bold"),
+            padx=14,
+            pady=12,
+        )
+        add_button.pack(fill="x", padx=22, pady=(0, 28))
+        nav_items = [
+            ("detail", "明细"),
+            ("stats", "统计"),
+            ("budget", "预算"),
+            ("categories", "分类"),
+        ]
+        for key, label in nav_items:
+            button = tk.Button(
+                sidebar,
+                text=f"    {label}",
+                command=lambda page=key: self.show_page(page),
+                anchor="w",
+                bg=self.colors["sidebar"],
+                fg="#e7f0e9",
+                activebackground="#285846",
+                activeforeground="#ffffff",
+                relief="flat",
+                bd=0,
+                highlightthickness=0,
+                overrelief="flat",
+                cursor="hand2",
+                font=(self.ui_font, 11),
+                padx=12,
+                pady=11,
+            )
+            button.pack(fill="x", padx=12, pady=2)
+            self.nav_buttons[key] = button
+        tk.Frame(sidebar, bg=self.colors["sidebar"]).pack(fill="both", expand=True)
+        tk.Label(sidebar, text="Ubuntu 试用版", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 9)).pack(anchor="w", padx=28, pady=(0, 4))
+        tk.Label(sidebar, text="数据保存在本地", bg=self.colors["sidebar"], fg="#8eada0", font=(self.ui_font, 9)).pack(anchor="w", padx=28, pady=(0, 24))
 
-        self.notebook = ttk.Notebook(outer)
-        self.notebook.pack(fill="both", expand=True)
-        self.detail_tab = ttk.Frame(self.notebook, padding=12)
-        self.stats_tab = ttk.Frame(self.notebook, padding=12)
-        self.budget_tab = ttk.Frame(self.notebook, padding=12)
-        self.categories_tab = ttk.Frame(self.notebook, padding=12)
-        self.notebook.add(self.detail_tab, text="明细")
-        self.notebook.add(self.stats_tab, text="统计")
-        self.notebook.add(self.budget_tab, text="预算")
-        self.notebook.add(self.categories_tab, text="分类")
+        content = ttk.Frame(shell, style="App.TFrame", padding=(32, 26, 32, 28))
+        content.pack(side="left", fill="both", expand=True)
+        header = ttk.Frame(content, style="App.TFrame")
+        header.pack(fill="x", pady=(0, 20))
+        heading = ttk.Frame(header, style="App.TFrame")
+        heading.pack(side="left")
+        ttk.Label(heading, textvariable=self.page_title_var, style="Heading.TLabel").pack(anchor="w")
+        ttk.Label(heading, textvariable=self.page_subtitle_var, style="Muted.TLabel").pack(anchor="w", pady=(4, 0))
+        actions = ttk.Frame(header, style="App.TFrame")
+        actions.pack(side="right", anchor="n")
+        ttk.Label(actions, textvariable=self.status_var, style="Muted.TLabel").pack(side="left", padx=(0, 12), pady=8)
+        ttk.Button(actions, text="↻ 刷新", style="Quiet.TButton", command=self.refresh).pack(side="left")
+
+        self.page_container = ttk.Frame(content, style="App.TFrame")
+        self.page_container.pack(fill="both", expand=True)
+        self.detail_tab = ttk.Frame(self.page_container, style="App.TFrame")
+        self.stats_tab = ttk.Frame(self.page_container, style="App.TFrame")
+        self.budget_tab = ttk.Frame(self.page_container, style="App.TFrame")
+        self.categories_tab = ttk.Frame(self.page_container, style="App.TFrame")
+        self.pages = {"detail": self.detail_tab, "stats": self.stats_tab, "budget": self.budget_tab, "categories": self.categories_tab}
         self._build_detail_tab()
         self._build_stats_tab()
         self._build_budget_tab()
         self._build_categories_tab()
+        self.show_page("detail")
 
-        bottom = ttk.Frame(outer)
-        bottom.pack(fill="x", pady=(12, 0))
-        ttk.Label(bottom, text="明细、统计、预算、分类").pack(side="left")
-        ttk.Button(bottom, text="＋ 记一笔", command=self.open_category_picker).pack(side="right", ipadx=18, ipady=8)
+    def show_page(self, page: str) -> None:
+        for frame in self.pages.values():
+            frame.pack_forget()
+        self.pages[page].pack(fill="both", expand=True)
+        titles = {
+            "detail": ("明细", "查看今天和本月的支出记录"),
+            "stats": ("统计", "按月份查看支出构成与占比"),
+            "budget": ("预算", "设置每月预算并跟踪使用情况"),
+            "categories": ("分类", "管理大类和自定义小类"),
+        }
+        self.page_title_var.set(titles[page][0])
+        self.page_subtitle_var.set(titles[page][1])
+        for key, button in self.nav_buttons.items():
+            button.configure(bg="#285846" if key == page else self.colors["sidebar"], fg="#ffffff" if key == page else "#e7f0e9")
 
     def _build_detail_tab(self) -> None:
-        controls = ttk.Frame(self.detail_tab)
-        controls.pack(fill="x", pady=(0, 12))
-        ttk.Label(controls, text="查看范围").pack(side="left")
-        ttk.Radiobutton(controls, text="单日", variable=self.range_var, value="day", command=self.refresh_detail).pack(side="left", padx=(10, 0))
+        controls = self._card(self.detail_tab)
+        controls.pack(fill="x", pady=(0, 14))
+        ttk.Label(controls, text="查看范围", style="Card.TLabel", font=(self.ui_font, 10, "bold")).pack(side="left")
+        ttk.Radiobutton(controls, text="单日", variable=self.range_var, value="day", command=self.refresh_detail).pack(side="left", padx=(14, 0))
         ttk.Radiobutton(controls, text="整月", variable=self.range_var, value="month", command=self.refresh_detail).pack(side="left")
-        ttk.Label(controls, text="日期").pack(side="left", padx=(22, 4))
+        ttk.Label(controls, text="日期", style="CardMuted.TLabel").pack(side="left", padx=(26, 4))
         date_entry = ttk.Entry(controls, textvariable=self.date_var, width=12)
         date_entry.pack(side="left")
         date_entry.bind("<Return>", lambda _event: self.refresh_detail())
-        ttk.Label(controls, text="月份").pack(side="left", padx=(12, 4))
+        ttk.Label(controls, text="月份", style="CardMuted.TLabel").pack(side="left", padx=(14, 4))
         month_entry = ttk.Entry(controls, textvariable=self.month_var, width=9)
         month_entry.pack(side="left")
         month_entry.bind("<Return>", lambda _event: self.refresh_detail())
-        ttk.Button(controls, text="查询", command=self.refresh_detail).pack(side="left", padx=8)
+        ttk.Button(controls, text="查询", style="Quiet.TButton", command=self.refresh_detail).pack(side="left", padx=10)
 
         self.detail_total_var = tk.StringVar(value="¥0.00")
         self.detail_summary_var = tk.StringVar(value="暂无记录")
-        summary = ttk.Frame(self.detail_tab)
-        summary.pack(fill="x", pady=(0, 10))
-        ttk.Label(summary, text="支出合计", foreground="#51605a").pack(side="left")
-        ttk.Label(summary, textvariable=self.detail_total_var, font=("Sans", 22, "bold")).pack(side="left", padx=14)
-        ttk.Label(summary, textvariable=self.detail_summary_var, foreground="#51605a").pack(side="left")
+        summary = self._card(self.detail_tab, "SurfaceAlt.TFrame")
+        summary.pack(fill="x", pady=(0, 14))
+        ttk.Label(summary, textvariable=self.detail_scope_title_var, style="AltMuted.TLabel").pack(anchor="w")
+        summary_row = ttk.Frame(summary, style="SurfaceAlt.TFrame")
+        summary_row.pack(fill="x", pady=(3, 0))
+        ttk.Label(summary_row, textvariable=self.detail_total_var, style="AltMoney.TLabel").pack(side="left")
+        ttk.Label(summary_row, textvariable=self.detail_summary_var, style="AltMuted.TLabel").pack(side="right", anchor="s", pady=(0, 5))
 
-        table_frame = ttk.Frame(self.detail_tab)
+        table_frame = self._card(self.detail_tab)
         table_frame.pack(fill="both", expand=True)
+        ttk.Label(table_frame, text="账单记录", style="CardHeading.TLabel").pack(anchor="w", pady=(0, 10))
         columns = ("date", "category", "amount", "note")
         self.expense_tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
         headings = {"date": "日期", "category": "大类", "amount": "金额", "note": "备注"}
@@ -167,65 +290,86 @@ class LedgerApp:
         scroll.pack(side="right", fill="y")
         self.expense_tree.configure(yscrollcommand=scroll.set)
         self.expense_tree.bind("<<TreeviewSelect>>", self.on_expense_select)
+        self.detail_empty_label = ttk.Label(
+            table_frame,
+            text="当前时间范围暂无记录\n点击左侧“＋ 记一笔”开始记录",
+            style="CardMuted.TLabel",
+            justify="center",
+        )
+        self.detail_empty_label.place(relx=0.5, rely=0.56, anchor="center")
 
-        actions = ttk.Frame(self.detail_tab)
-        actions.pack(fill="x", pady=(10, 0))
+        actions = ttk.Frame(self.detail_tab, style="App.TFrame")
+        actions.pack(fill="x", pady=(12, 0))
         self.detail_selection_var = tk.StringVar(value="选择一笔账单查看详情")
-        ttk.Label(actions, textvariable=self.detail_selection_var).pack(side="left")
-        ttk.Button(actions, text="编辑", command=self.edit_selected).pack(side="right", padx=(8, 0))
-        ttk.Button(actions, text="删除", command=self.delete_selected).pack(side="right")
+        ttk.Label(actions, textvariable=self.detail_selection_var, style="Muted.TLabel").pack(side="left")
+        ttk.Button(actions, text="编辑", style="Quiet.TButton", command=self.edit_selected).pack(side="right", padx=(8, 0))
+        ttk.Button(actions, text="删除", style="Quiet.TButton", command=self.delete_selected).pack(side="right")
 
     def _build_stats_tab(self) -> None:
-        top = ttk.Frame(self.stats_tab)
-        top.pack(fill="x", pady=(0, 12))
-        ttk.Label(top, text="统计月份").pack(side="left")
+        top = self._card(self.stats_tab)
+        top.pack(fill="x", pady=(0, 14))
+        ttk.Label(top, text="统计月份", style="Card.TLabel", font=(self.ui_font, 10, "bold")).pack(side="left")
         ttk.Entry(top, textvariable=self.month_var, width=10).pack(side="left", padx=6)
-        ttk.Button(top, text="刷新统计", command=self.refresh_stats).pack(side="left")
+        ttk.Button(top, text="刷新统计", style="Quiet.TButton", command=self.refresh_stats).pack(side="left")
         self.stats_total_var = tk.StringVar(value="¥0.00")
         self.stats_count_var = tk.StringVar(value="0 笔")
         self.stats_budget_var = tk.StringVar(value="")
-        cards = ttk.Frame(self.stats_tab)
-        cards.pack(fill="x", pady=(0, 16))
-        ttk.Label(cards, text="月度支出", font=("Sans", 12)).pack(side="left")
-        ttk.Label(cards, textvariable=self.stats_total_var, font=("Sans", 22, "bold")).pack(side="left", padx=14)
-        ttk.Label(cards, textvariable=self.stats_count_var).pack(side="left", padx=14)
-        ttk.Label(cards, textvariable=self.stats_budget_var, foreground="#8a4b2e").pack(side="left")
-        self.stats_tree = ttk.Treeview(self.stats_tab, columns=("category", "amount", "ratio"), show="headings")
+        cards = self._card(self.stats_tab, "SurfaceAlt.TFrame")
+        cards.pack(fill="x", pady=(0, 14))
+        ttk.Label(cards, text="本月支出", style="AltMuted.TLabel").pack(anchor="w")
+        stats_row = ttk.Frame(cards, style="SurfaceAlt.TFrame")
+        stats_row.pack(fill="x", pady=(3, 0))
+        ttk.Label(stats_row, textvariable=self.stats_total_var, style="AltMoney.TLabel").pack(side="left")
+        ttk.Label(stats_row, textvariable=self.stats_count_var, style="AltMuted.TLabel").pack(side="left", padx=22, pady=(12, 0))
+        ttk.Label(stats_row, textvariable=self.stats_budget_var, style="AltMuted.TLabel").pack(side="right", pady=(12, 0))
+        table = self._card(self.stats_tab)
+        table.pack(fill="both", expand=True)
+        ttk.Label(table, text="分类构成", style="CardHeading.TLabel").pack(anchor="w", pady=(0, 10))
+        self.stats_tree = ttk.Treeview(table, columns=("category", "amount", "ratio"), show="headings")
         for key, title, width in (("category", "大类", 220), ("amount", "金额", 180), ("ratio", "占比", 120)):
             self.stats_tree.heading(key, text=title)
             self.stats_tree.column(key, width=width, anchor="e" if key != "category" else "w")
         self.stats_tree.pack(fill="both", expand=True)
 
     def _build_budget_tab(self) -> None:
-        form = ttk.Frame(self.budget_tab)
-        form.pack(anchor="nw", fill="x")
-        ttk.Label(form, text="月份（YYYY-MM）").grid(row=0, column=0, sticky="w", pady=6)
+        card = self._card(self.budget_tab)
+        card.pack(fill="x", pady=(0, 14))
+        ttk.Label(card, text="月度预算", style="CardHeading.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 16))
+        form = ttk.Frame(card, style="Surface.TFrame")
+        form.grid(row=1, column=0, columnspan=3, sticky="ew")
+        ttk.Label(form, text="月份（YYYY-MM）", style="CardMuted.TLabel").grid(row=0, column=0, sticky="w", pady=6)
         ttk.Entry(form, textvariable=self.month_var, width=12).grid(row=0, column=1, sticky="w", padx=8)
-        ttk.Label(form, text="总预算（元）").grid(row=1, column=0, sticky="w", pady=6)
+        ttk.Label(form, text="总预算（元）", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=6)
         self.budget_input_var = tk.StringVar()
         ttk.Entry(form, textvariable=self.budget_input_var, width=12).grid(row=1, column=1, sticky="w", padx=8)
-        ttk.Button(form, text="保存预算", command=self.save_budget).grid(row=1, column=2, padx=8)
+        ttk.Button(form, text="保存预算", style="Accent.TButton", command=self.save_budget).grid(row=1, column=2, padx=8)
         self.budget_status_var = tk.StringVar(value="尚未设置预算")
-        ttk.Label(self.budget_tab, textvariable=self.budget_status_var, font=("Sans", 14)).pack(anchor="w", pady=(22, 8))
-        self.budget_progress = ttk.Progressbar(self.budget_tab, orient="horizontal", length=520, mode="determinate", maximum=100)
-        self.budget_progress.pack(anchor="w")
+        ttk.Label(card, textvariable=self.budget_status_var, style="CardHeading.TLabel", font=(self.ui_font, 14)).grid(row=2, column=0, columnspan=3, sticky="w", pady=(24, 8))
+        self.budget_progress = ttk.Progressbar(card, orient="horizontal", length=520, mode="determinate", maximum=100)
+        self.budget_progress.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         self.budget_hint_var = tk.StringVar(value="")
-        ttk.Label(self.budget_tab, textvariable=self.budget_hint_var, foreground="#51605a").pack(anchor="w", pady=8)
+        ttk.Label(card, textvariable=self.budget_hint_var, style="CardMuted.TLabel").grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        card.columnconfigure(1, weight=1)
 
     def _build_categories_tab(self) -> None:
-        self.category_tree = ttk.Treeview(self.categories_tab, columns=("name", "kind"), show="headings", selectmode="browse")
+        card = self._card(self.categories_tab)
+        card.pack(fill="both", expand=True)
+        top = ttk.Frame(card, style="Surface.TFrame")
+        top.pack(fill="x", pady=(0, 12))
+        ttk.Label(top, text="分类管理", style="CardHeading.TLabel").pack(side="left")
+        ttk.Button(top, text="新增大类", style="Accent.TButton", command=lambda: self.add_category(False)).pack(side="right")
+        self.category_tree = ttk.Treeview(card, columns=("name", "kind"), show="headings", selectmode="browse")
         self.category_tree.heading("name", text="分类名称")
         self.category_tree.heading("kind", text="层级")
         self.category_tree.column("name", width=260, anchor="w")
         self.category_tree.column("kind", width=120, anchor="w")
         self.category_tree.pack(side="left", fill="both", expand=True)
         self.category_tree.bind("<<TreeviewSelect>>", lambda _event: None)
-        side = ttk.Frame(self.categories_tab, padding=(16, 0, 0, 0))
+        side = ttk.Frame(card, style="Surface.TFrame", padding=(18, 0, 0, 0))
         side.pack(side="right", fill="y")
-        ttk.Button(side, text="新增大类", command=lambda: self.add_category(False)).pack(fill="x", pady=4)
-        ttk.Button(side, text="新增小类", command=lambda: self.add_category(True)).pack(fill="x", pady=4)
-        ttk.Button(side, text="重命名选中", command=self.rename_category).pack(fill="x", pady=4)
-        ttk.Label(side, text="先在左侧选择分类\n再执行新增小类或重命名", foreground="#51605a").pack(anchor="w", pady=18)
+        ttk.Button(side, text="新增小类", style="Quiet.TButton", command=lambda: self.add_category(True)).pack(fill="x", pady=4)
+        ttk.Button(side, text="重命名选中", style="Quiet.TButton", command=self.rename_category).pack(fill="x", pady=4)
+        ttk.Label(side, text="先选择左侧分类\n再新增小类或重命名", style="CardMuted.TLabel", justify="left").pack(anchor="w", pady=18)
 
     def refresh(self) -> None:
         try:
@@ -280,13 +424,19 @@ class LedgerApp:
             self.expense_tree.delete(item)
         expenses = self.state["expenses"]  # type: ignore[assignment]
         if self.range_var.get() == "month":
+            self.detail_scope_title_var.set("本月支出")
             selected = [item for item in expenses if str(item["date"]).startswith(self.month_var.get())]
         else:
+            self.detail_scope_title_var.set("今日支出")
             selected = [item for item in expenses if item["date"] == self.date_var.get()]
         selected.sort(key=lambda item: (str(item["date"]), str(item["updated_at"]), str(item["id"])), reverse=True)
         total = sum(int(item["amount"]) for item in selected)
         self.detail_total_var.set(_money(total))
         self.detail_summary_var.set(f"{len(selected)} 笔" if selected else "暂无记录")
+        if selected:
+            self.detail_empty_label.place_forget()
+        else:
+            self.detail_empty_label.place(relx=0.5, rely=0.56, anchor="center")
         for item in selected:
             category = self.category_by_id.get(str(item["category_id"]), {"name": "未知分类"})["name"]
             note = str(item["note"]) or "未填写备注"
@@ -346,14 +496,20 @@ class LedgerApp:
     def open_category_picker(self, on_selected: Callable[[dict[str, str]], None] | None = None) -> None:
         dialog = tk.Toplevel(self.root)
         dialog.title("选择大类")
+        dialog.geometry("430x470")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors["background"])
         dialog.transient(self.root)
         dialog.grab_set()
-        ttk.Label(dialog, text="先选择支出大类", font=("Sans", 14, "bold")).pack(padx=24, pady=(18, 10))
+        ttk.Label(dialog, text="选择支出大类", style="Heading.TLabel").pack(anchor="w", padx=28, pady=(26, 4))
+        ttk.Label(dialog, text="选好分类后继续填写金额和日期", style="Muted.TLabel").pack(anchor="w", padx=28, pady=(0, 18))
+        list_card = self._card(dialog)
+        list_card.pack(fill="both", expand=True, padx=20, pady=(0, 16))
         for category in self.state["categories"]:  # type: ignore[union-attr]
             if category["parent_id"]:
                 continue
-            ttk.Button(dialog, text=category["name"], command=lambda c=category: self._category_chosen(dialog, c, on_selected)).pack(fill="x", padx=24, pady=4, ipadx=18, ipady=6)
-        ttk.Button(dialog, text="关闭", command=dialog.destroy).pack(pady=(10, 18))
+            ttk.Button(list_card, text=f"  {category['name']}   >", style="Quiet.TButton", command=lambda c=category: self._category_chosen(dialog, c, on_selected)).pack(fill="x", pady=4, ipady=6)
+        ttk.Button(dialog, text="取消", style="Quiet.TButton", command=dialog.destroy).pack(pady=(0, 20))
 
     def _category_chosen(self, dialog: tk.Toplevel, category: dict[str, str], callback: Callable[[dict[str, str]], None] | None) -> None:
         dialog.destroy()
@@ -365,6 +521,9 @@ class LedgerApp:
     def open_expense_form(self, category: dict[str, str], expense: dict[str, object] | None = None) -> None:
         dialog = tk.Toplevel(self.root)
         dialog.title("编辑账单" if expense else "记一笔")
+        dialog.geometry("560x520")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors["background"])
         dialog.transient(self.root)
         dialog.grab_set()
         amount_var = tk.StringVar(value=f"{int(expense['amount']) / 100:.2f}" if expense else "")
@@ -372,18 +531,25 @@ class LedgerApp:
         note_var = tk.StringVar(value=str(expense["note"]) if expense else "")
         category_var = tk.StringVar(value=str(category["name"]))
         error_var = tk.StringVar(value="")
-        body = ttk.Frame(dialog, padding=24)
-        body.pack(fill="both", expand=True)
-        ttk.Label(body, text="已选大类").grid(row=0, column=0, sticky="w", pady=7)
-        ttk.Label(body, textvariable=category_var, font=("Sans", 12, "bold")).grid(row=0, column=1, sticky="w", pady=7)
-        ttk.Button(body, text="重新选择", command=lambda: self.open_category_picker(lambda picked: (category.update(picked), category_var.set(picked["name"])))).grid(row=0, column=2, padx=8)
-        ttk.Label(body, text="金额（元）").grid(row=1, column=0, sticky="w", pady=7)
+        ttk.Label(dialog, text="编辑账单" if expense else "记一笔", style="Heading.TLabel").pack(anchor="w", padx=28, pady=(24, 2))
+        ttk.Label(dialog, text="记录一笔离线支出", style="Muted.TLabel").pack(anchor="w", padx=28, pady=(0, 16))
+        body = self._card(dialog)
+        body.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        ttk.Label(body, text="已选大类", style="CardMuted.TLabel").grid(row=0, column=0, sticky="w", pady=8)
+        ttk.Label(body, textvariable=category_var, style="CardHeading.TLabel").grid(row=0, column=1, sticky="w", pady=8)
+        ttk.Button(
+            body,
+            text="重新选择",
+            style="Quiet.TButton",
+            command=lambda: self.open_category_picker(lambda picked: (category.update(picked), category_var.set(picked["name"]))),
+        ).grid(row=0, column=2, padx=8)
+        ttk.Label(body, text="金额（元）", style="CardMuted.TLabel").grid(row=1, column=0, sticky="w", pady=8)
         ttk.Entry(body, textvariable=amount_var, width=22).grid(row=1, column=1, columnspan=2, sticky="w")
-        ttk.Label(body, text="日期（YYYY-MM-DD）").grid(row=2, column=0, sticky="w", pady=7)
+        ttk.Label(body, text="日期（YYYY-MM-DD）", style="CardMuted.TLabel").grid(row=2, column=0, sticky="w", pady=8)
         ttk.Entry(body, textvariable=date_var, width=22).grid(row=2, column=1, columnspan=2, sticky="w")
-        ttk.Label(body, text="备注／小类说明（选填）").grid(row=3, column=0, sticky="w", pady=7)
+        ttk.Label(body, text="备注／小类说明（选填）", style="CardMuted.TLabel").grid(row=3, column=0, sticky="w", pady=8)
         ttk.Entry(body, textvariable=note_var, width=36).grid(row=3, column=1, columnspan=2, sticky="w")
-        ttk.Label(body, textvariable=error_var, foreground="#a33b32").grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 12))
+        ttk.Label(body, textvariable=error_var, foreground=self.colors["danger"], background=self.colors["surface"]).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 12))
 
         def save() -> None:
             try:
@@ -399,8 +565,8 @@ class LedgerApp:
 
         buttons = ttk.Frame(body)
         buttons.grid(row=5, column=0, columnspan=3, sticky="e")
-        ttk.Button(buttons, text="取消", command=dialog.destroy).pack(side="right", padx=4)
-        ttk.Button(buttons, text="保存", command=save).pack(side="right", padx=4)
+        ttk.Button(buttons, text="取消", style="Quiet.TButton", command=dialog.destroy).pack(side="right", padx=4)
+        ttk.Button(buttons, text="保存", style="Accent.TButton", command=save).pack(side="right", padx=4)
 
     def on_expense_select(self, _event: object) -> None:
         selection = self.expense_tree.selection()
@@ -467,15 +633,20 @@ class LedgerApp:
     def _category_name_dialog(self, title: str, parent_id: str, existing: dict[str, str] | None = None) -> None:
         dialog = tk.Toplevel(self.root)
         dialog.title(title)
+        dialog.geometry("430x250")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.colors["background"])
         dialog.transient(self.root)
         dialog.grab_set()
         value = tk.StringVar(value=existing["name"] if existing else "")
         error = tk.StringVar(value="")
-        body = ttk.Frame(dialog, padding=22)
+        ttk.Label(dialog, text=title, style="Heading.TLabel").pack(anchor="w", padx=28, pady=(24, 2))
+        ttk.Label(dialog, text="名称不能为空，且同层级不能重复", style="Muted.TLabel").pack(anchor="w", padx=28, pady=(0, 16))
+        body = self._card(dialog)
         body.pack(fill="both", expand=True)
-        ttk.Label(body, text="分类名称").grid(row=0, column=0, sticky="w", pady=6)
+        ttk.Label(body, text="分类名称", style="CardMuted.TLabel").grid(row=0, column=0, sticky="w", pady=6)
         ttk.Entry(body, textvariable=value, width=26).grid(row=0, column=1, pady=6)
-        ttk.Label(body, textvariable=error, foreground="#a33b32").grid(row=1, column=0, columnspan=2, sticky="w")
+        ttk.Label(body, textvariable=error, foreground=self.colors["danger"], background=self.colors["surface"]).grid(row=1, column=0, columnspan=2, sticky="w")
 
         def save() -> None:
             try:
@@ -490,8 +661,8 @@ class LedgerApp:
 
         buttons = ttk.Frame(body)
         buttons.grid(row=2, column=0, columnspan=2, sticky="e", pady=(12, 0))
-        ttk.Button(buttons, text="取消", command=dialog.destroy).pack(side="right", padx=4)
-        ttk.Button(buttons, text="保存", command=save).pack(side="right", padx=4)
+        ttk.Button(buttons, text="取消", style="Quiet.TButton", command=dialog.destroy).pack(side="right", padx=4)
+        ttk.Button(buttons, text="保存", style="Accent.TButton", command=save).pack(side="right", padx=4)
 
 
 def main() -> None:
