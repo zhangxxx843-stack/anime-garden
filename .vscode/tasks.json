@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "仓颉：编译作业",
+      "type": "process",
+      "command": "/bin/bash",
+      "args": ["${workspaceFolder}/dev.sh", "build"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "group": {"kind": "build", "isDefault": true},
+      "problemMatcher": []
+    },
+    {
+      "label": "仓颉：运行作业",
+      "type": "process",
+      "command": "/bin/bash",
+      "args": ["${workspaceFolder}/dev.sh", "run"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": [],
+      "presentation": {"reveal": "always", "focus": true}
+    },
+    {
+      "label": "仓颉：单元测试",
+      "type": "process",
+      "command": "/bin/bash",
+      "args": ["${workspaceFolder}/dev.sh", "test-local"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "仓颉：完整检查",
+      "type": "process",
+      "command": "/bin/bash",
+      "args": ["${workspaceFolder}/dev.sh", "check"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    }
+  ]
+}

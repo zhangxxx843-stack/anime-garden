@@ -1,0 +1,12 @@
+{
+  "CangjieSdk.Option": "CJNative",
+  "CangjieSdkPath.CJNativeBackend": "/home/zhangxxx/Documents/Codex/2026-10-23/referenced-chatgpt-conversation-this-is-an/outputs/cangjie-study/sdk/cangjie",
+  "terminal.integrated.profiles.linux": {
+    "Cangjie Ubuntu": {
+      "path": "/bin/bash",
+      "args": ["--rcfile", "${workspaceFolder}/.vscode/terminal.bashrc"]
+    }
+  },
+  "terminal.integrated.defaultProfile.linux": "Cangjie Ubuntu",
+  "task.saveBeforeRun": "always"
+}
