@@ -1,5 +1,7 @@
 package miniproject.model
 
+import std.collection.*
+
 public struct Category {
     public let id: String
     public var name: String
@@ -45,5 +47,17 @@ public struct MonthlyBudget {
         this.month = month
         this.amountInCents = amountInCents
         this.updatedAt = updatedAt
+    }
+}
+
+public class LedgerState {
+    public var categories: ArrayList<Category>
+    public var expenses: ArrayList<Expense>
+    public var budgets: ArrayList<MonthlyBudget>
+
+    public init() {
+        this.categories = ArrayList<Category>()
+        this.expenses = ArrayList<Expense>()
+        this.budgets = ArrayList<MonthlyBudget>()
     }
 }

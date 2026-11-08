@@ -35,8 +35,9 @@ public func isValidDate(value: String): Bool {
 }
 
 public func monthOf(date: String): String {
-    if (date.size < 7) {
+    let pieces = date.split("-")
+    if (pieces.size < 2) {
         return ""
     }
-    return date[0..6]
+    return "${pieces[0]}-${pieces[1]}"
 }
