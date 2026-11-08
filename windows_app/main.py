@@ -11,10 +11,12 @@ from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
     QFrame,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -23,6 +25,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QProgressBar,
     QDateEdit,
     QStackedWidget,
     QTableWidget,
@@ -32,7 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from .ledger_domain import LedgerService, LedgerState, expense_display_text
-from .ledger_storage import default_data_path, load_state, save_state
+from .ledger_storage import default_data_path, deserialize_state, load_state, save_state
 
 
 def money(cents: int) -> str:
@@ -158,6 +161,10 @@ class LedgerWindow(QMainWindow):
             self.navigation_buttons[key] = button
             sidebar_layout.addWidget(button)
         sidebar_layout.addStretch(1)
+        self.import_button = QPushButton("导入旧账本")
+        self.import_button.setObjectName("secondaryButton")
+        self.import_button.clicked.connect(self.import_ledger)
+        sidebar_layout.addWidget(self.import_button)
         self.add_button = QPushButton("＋ 记一笔")
         self.add_button.setObjectName("primaryAddButton")
         self.add_button.clicked.connect(self.open_add_expense)
@@ -166,9 +173,9 @@ class LedgerWindow(QMainWindow):
 
         self.pages = QStackedWidget()
         self.pages.addWidget(self._build_details_page())
-        self.pages.addWidget(self._build_placeholder_page("统计", "按月查看支出趋势与分类占比。"))
-        self.pages.addWidget(self._build_placeholder_page("预算", "为每个月设置预算，及时看到剩余金额。"))
-        self.pages.addWidget(self._build_placeholder_page("分类", "管理你的大类和小类。"))
+        self.pages.addWidget(self._build_stats_page())
+        self.pages.addWidget(self._build_budget_page())
+        self.pages.addWidget(self._build_categories_page())
         root_layout.addWidget(self.pages, 1)
         self.show_page("details")
 
@@ -193,6 +200,16 @@ class LedgerWindow(QMainWindow):
         self.date_filter.dateChanged.connect(self.refresh_details)
         header.addWidget(QLabel("日期"))
         header.addWidget(self.date_filter)
+        self.edit_button = QPushButton("编辑")
+        self.edit_button.setObjectName("secondaryButton")
+        self.edit_button.setEnabled(False)
+        self.edit_button.clicked.connect(self.edit_selected_expense)
+        self.delete_button = QPushButton("删除")
+        self.delete_button.setObjectName("secondaryButton")
+        self.delete_button.setEnabled(False)
+        self.delete_button.clicked.connect(self.delete_selected_expense)
+        header.addWidget(self.edit_button)
+        header.addWidget(self.delete_button)
         layout.addLayout(header)
 
         cards = QHBoxLayout()
@@ -221,8 +238,132 @@ class LedgerWindow(QMainWindow):
         self.expense_table.setColumnWidth(0, 140)
         self.expense_table.setColumnWidth(1, 160)
         self.expense_table.setColumnWidth(2, 150)
+        self.expense_table.itemSelectionChanged.connect(self._update_expense_actions)
         table_layout.addWidget(self.expense_table)
         layout.addWidget(table_frame, 1)
+        return page
+
+    def _build_stats_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(42, 34, 42, 34)
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title = QLabel("统计")
+        title.setObjectName("pageTitle")
+        hint = QLabel("按月查看总支出与分类分布")
+        hint.setObjectName("pageHint")
+        title_box.addWidget(title)
+        title_box.addWidget(hint)
+        header.addLayout(title_box)
+        header.addStretch(1)
+        self.stats_month_filter = QDateEdit(QDate.currentDate())
+        self.stats_month_filter.setDisplayFormat("yyyy-MM")
+        self.stats_month_filter.setCalendarPopup(True)
+        self.stats_month_filter.dateChanged.connect(self.refresh_stats)
+        header.addWidget(QLabel("月份"))
+        header.addWidget(self.stats_month_filter)
+        layout.addLayout(header)
+
+        cards = QHBoxLayout()
+        self.stats_total_card = self._summary_card("月度支出", "¥0.00")
+        self.stats_count_card = self._summary_card("记录笔数", "0 笔")
+        self.stats_total_label = self.stats_total_card.value_label
+        self.stats_count_label = self.stats_count_card.value_label
+        cards.addWidget(self.stats_total_card)
+        cards.addWidget(self.stats_count_card)
+        cards.addStretch(1)
+        layout.addLayout(cards)
+
+        self.stats_table = QTableWidget(0, 2)
+        self.stats_table.setHorizontalHeaderLabels(["分类", "金额"])
+        self.stats_table.setObjectName("expenseTable")
+        self.stats_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.stats_table.verticalHeader().setVisible(False)
+        self.stats_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.stats_table, 1)
+        return page
+
+    def _build_budget_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(42, 34, 42, 34)
+        title = QLabel("预算")
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
+        hint = QLabel("设置每月预算，随时看到剩余金额")
+        hint.setObjectName("pageHint")
+        layout.addWidget(hint)
+
+        panel = QFrame()
+        panel.setObjectName("summaryCard")
+        form = QFormLayout(panel)
+        form.setContentsMargins(24, 22, 24, 22)
+        self.budget_month_edit = QDateEdit(QDate.currentDate())
+        self.budget_month_edit.setDisplayFormat("yyyy-MM")
+        self.budget_month_edit.setCalendarPopup(True)
+        self.budget_month_edit.dateChanged.connect(self.refresh_budget)
+        self.budget_amount_edit = QLineEdit()
+        self.budget_amount_edit.setPlaceholderText("例如 3000")
+        self.budget_save_button = QPushButton("保存预算")
+        self.budget_save_button.setObjectName("primaryButton")
+        self.budget_save_button.clicked.connect(self.save_budget)
+        form.addRow("月份", self.budget_month_edit)
+        form.addRow("预算金额", self.budget_amount_edit)
+        form.addRow("", self.budget_save_button)
+        layout.addWidget(panel)
+
+        self.budget_progress = QProgressBar()
+        self.budget_progress.setRange(0, 100)
+        self.budget_progress.setTextVisible(True)
+        layout.addWidget(self.budget_progress)
+        self.budget_status_label = QLabel("")
+        self.budget_status_label.setObjectName("budgetStatus")
+        layout.addWidget(self.budget_status_label)
+        layout.addStretch(1)
+        return page
+
+    def _build_categories_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(42, 34, 42, 34)
+        title = QLabel("分类")
+        title.setObjectName("pageTitle")
+        layout.addWidget(title)
+        hint = QLabel("维护大类和小类，记账时会立即可用")
+        hint.setObjectName("pageHint")
+        layout.addWidget(hint)
+
+        body = QHBoxLayout()
+        self.category_list = QListWidget()
+        self.category_list.setObjectName("categoryList")
+        self.category_list.currentItemChanged.connect(self._category_selection_changed)
+        body.addWidget(self.category_list, 1)
+
+        editor = QFrame()
+        editor.setObjectName("summaryCard")
+        editor_layout = QFormLayout(editor)
+        editor_layout.setContentsMargins(24, 22, 24, 22)
+        self.category_name_edit = QLineEdit()
+        self.category_name_edit.setPlaceholderText("例如 早餐")
+        self.category_parent_combo = QComboBox()
+        self.category_add_button = QPushButton("新增分类")
+        self.category_add_button.setObjectName("primaryButton")
+        self.category_add_button.clicked.connect(self.add_category)
+        self.category_rename_button = QPushButton("重命名所选")
+        self.category_rename_button.setObjectName("secondaryButton")
+        self.category_rename_button.clicked.connect(self.rename_category)
+        self.category_error_label = QLabel("")
+        self.category_error_label.setObjectName("errorLabel")
+        self.category_error_label.setWordWrap(True)
+        editor_layout.addRow("名称", self.category_name_edit)
+        editor_layout.addRow("上级大类", self.category_parent_combo)
+        editor_layout.addRow("", self.category_add_button)
+        editor_layout.addRow("", self.category_rename_button)
+        editor_layout.addRow("", self.category_error_label)
+        body.addWidget(editor, 1)
+        layout.addLayout(body, 1)
+        self.refresh_categories()
         return page
 
     def _summary_card(self, label: str, value: str) -> QFrame:
@@ -268,6 +409,12 @@ class LedgerWindow(QMainWindow):
             button.style().polish(button)
         if page_key == "details":
             self.refresh_details()
+        elif page_key == "stats":
+            self.refresh_stats()
+        elif page_key == "budget":
+            self.refresh_budget()
+        elif page_key == "categories":
+            self.refresh_categories()
 
     def refresh_details(self) -> None:
         if not hasattr(self, "expense_table"):
@@ -280,6 +427,7 @@ class LedgerWindow(QMainWindow):
         ]
         indexed_expenses.sort(key=lambda item: (item[1].date, item[1].created_at, item[0]), reverse=True)
         expenses = [expense for _index, expense in indexed_expenses]
+        self._visible_expenses = expenses
         total = sum(expense.amount_cents for expense in expenses)
         self.total_card.value_label.setText(money(total))
         self.count_card.value_label.setText(f"{len(expenses)} 笔")
@@ -294,6 +442,197 @@ class LedgerWindow(QMainWindow):
                 self.expense_table.setItem(row, column, item)
         self.empty_label.setVisible(not expenses)
         self.expense_table.setVisible(bool(expenses))
+        self._update_expense_actions()
+
+    def _update_expense_actions(self) -> None:
+        enabled = hasattr(self, "expense_table") and self.expense_table.currentRow() >= 0
+        if hasattr(self, "edit_button"):
+            self.edit_button.setEnabled(enabled)
+        if hasattr(self, "delete_button"):
+            self.delete_button.setEnabled(enabled)
+
+    def _selected_expense(self):
+        row = self.expense_table.currentRow()
+        if row < 0 or row >= len(getattr(self, "_visible_expenses", [])):
+            return None
+        return self._visible_expenses[row]
+
+    def edit_selected_expense(self) -> None:
+        expense = self._selected_expense()
+        if expense is not None:
+            self.open_expense_dialog(expense.category_id, expense)
+
+    def delete_selected_expense(self) -> None:
+        expense = self._selected_expense()
+        if expense is None:
+            return
+        answer = QMessageBox.question(self, "删除记录", "确定删除这笔支出吗？")
+        if answer != QMessageBox.Yes:
+            return
+        snapshot = deepcopy(self.service.state)
+        try:
+            self.service.delete_expense(expense.id)
+            self.store.save(self.service.state)
+        except Exception as error:
+            self._restore_state(snapshot)
+            QMessageBox.warning(self, "保存失败", f"删除没有保存成功：{error}")
+            return
+        self.refresh_details()
+
+    def refresh_stats(self) -> None:
+        if not hasattr(self, "stats_table"):
+            return
+        month = self.stats_month_filter.date().toString("yyyy-MM")
+        summary = self.service.summarize_month(month)
+        self.stats_total_label.setText(money(summary["total_cents"]))
+        self.stats_count_label.setText(f"{summary['count']} 笔")
+        rows = []
+        for category_id, total in summary["by_category"].items():
+            category = next((item for item in self.service.state.categories if item.id == category_id), None)
+            rows.append((category.name if category else "未分类", total))
+        rows.sort(key=lambda item: item[1], reverse=True)
+        self.stats_table.setRowCount(len(rows))
+        for row, (category_name, total) in enumerate(rows):
+            self.stats_table.setItem(row, 0, QTableWidgetItem(category_name))
+            amount_item = QTableWidgetItem(money(total))
+            amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.stats_table.setItem(row, 1, amount_item)
+
+    def refresh_budget(self) -> None:
+        if not hasattr(self, "budget_progress"):
+            return
+        month = self.budget_month_edit.date().toString("yyyy-MM")
+        status = self.service.budget_status(month)
+        current_budget = next((budget for budget in self.service.state.budgets if budget.month == month), None)
+        self.budget_amount_edit.blockSignals(True)
+        self.budget_amount_edit.setText(f"{current_budget.amount_cents / 100:.2f}" if current_budget else "")
+        self.budget_amount_edit.blockSignals(False)
+        if status["budget_cents"]:
+            progress = min(100, round(status["spent_cents"] * 100 / status["budget_cents"]))
+            self.budget_progress.setValue(progress)
+            if status["over_budget"]:
+                self.budget_status_label.setText(
+                    f"已用 {money(status['spent_cents'])}，超出 {money(-status['remaining_cents'])}"
+                )
+            else:
+                self.budget_status_label.setText(
+                    f"已用 {money(status['spent_cents'])}，剩余 {money(status['remaining_cents'])}"
+                )
+        else:
+            self.budget_progress.setValue(0)
+            self.budget_status_label.setText("本月尚未设置预算")
+
+    def save_budget(self) -> None:
+        month = self.budget_month_edit.date().toString("yyyy-MM")
+        snapshot = deepcopy(self.service.state)
+        try:
+            self.service.set_budget(month, self.budget_amount_edit.text())
+            self.store.save(self.service.state)
+        except Exception as error:
+            self._restore_state(snapshot)
+            self.budget_status_label.setText(f"保存失败：{error}")
+            return
+        self.refresh_budget()
+
+    def refresh_categories(self) -> None:
+        if not hasattr(self, "category_list"):
+            return
+        selected_id = None
+        current = self.category_list.currentItem()
+        if current is not None:
+            selected_id = current.data(Qt.UserRole)
+        self.category_list.blockSignals(True)
+        self.category_list.clear()
+        for category in self.service.state.categories:
+            item = QListWidgetItem(category.name)
+            item.setData(Qt.UserRole, category.id)
+            if category.parent_id:
+                item.setToolTip("上级：" + self._category_name(category.parent_id))
+            self.category_list.addItem(item)
+        self.category_list.blockSignals(False)
+        self.category_parent_combo.blockSignals(True)
+        self.category_parent_combo.clear()
+        self.category_parent_combo.addItem("无（大类）", None)
+        for category in self.service.state.categories:
+            self.category_parent_combo.addItem(category.name, category.id)
+        self.category_parent_combo.blockSignals(False)
+        if selected_id:
+            for row in range(self.category_list.count()):
+                if self.category_list.item(row).data(Qt.UserRole) == selected_id:
+                    self.category_list.setCurrentRow(row)
+                    break
+
+    def _category_name(self, category_id: str) -> str:
+        category = next((item for item in self.service.state.categories if item.id == category_id), None)
+        return category.name if category else "未分类"
+
+    def _category_selection_changed(self, current, _previous) -> None:
+        if current is None:
+            return
+        category_id = current.data(Qt.UserRole)
+        category = next(item for item in self.service.state.categories if item.id == category_id)
+        self.category_name_edit.setText(category.name)
+        index = self.category_parent_combo.findData(category.parent_id)
+        self.category_parent_combo.setCurrentIndex(max(index, 0))
+
+    def add_category(self) -> None:
+        snapshot = deepcopy(self.service.state)
+        try:
+            self.service.add_category(
+                self.category_name_edit.text(),
+                self.category_parent_combo.currentData(),
+            )
+            self.store.save(self.service.state)
+        except Exception as error:
+            self._restore_state(snapshot)
+            self.category_error_label.setText(f"保存失败：{error}")
+            return
+        self.category_error_label.setText("")
+        self.category_name_edit.clear()
+        self.refresh_categories()
+
+    def rename_category(self) -> None:
+        current = self.category_list.currentItem()
+        if current is None:
+            self.category_error_label.setText("请先选择要重命名的分类")
+            return
+        snapshot = deepcopy(self.service.state)
+        try:
+            self.service.rename_category(current.data(Qt.UserRole), self.category_name_edit.text())
+            self.store.save(self.service.state)
+        except Exception as error:
+            self._restore_state(snapshot)
+            self.category_error_label.setText(f"保存失败：{error}")
+            return
+        self.category_error_label.setText("")
+        self.refresh_categories()
+
+    def import_ledger(self, path=None) -> bool:
+        if path is None:
+            selected_path, _filter = QFileDialog.getOpenFileName(
+                self, "导入旧账本", str(Path.home()), "账本文件 (*.tsv);;所有文件 (*)"
+            )
+            path = selected_path
+        if not path:
+            return False
+        try:
+            imported = deserialize_state(Path(path).read_text(encoding="utf-8"))
+        except Exception as error:
+            self.details_hint.setText(f"导入失败：{error}")
+            return False
+        snapshot = deepcopy(self.service.state)
+        try:
+            self._restore_state(imported)
+            self.store.save(self.service.state)
+        except Exception as error:
+            self._restore_state(snapshot)
+            self.details_hint.setText(f"导入失败：{error}")
+            return False
+        self.refresh_details()
+        self.refresh_stats()
+        self.refresh_budget()
+        self.refresh_categories()
+        return True
 
     def open_add_expense(self) -> None:
         categories = [category for category in self.service.state.categories if category.parent_id is None]
