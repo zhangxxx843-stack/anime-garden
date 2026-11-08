@@ -134,6 +134,7 @@ class LedgerApp:
         candidates = (
             PROJECT_DIR / ".cache" / "tk-fonts" / "wqy-zenhei.ttc",
             Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+            Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
             Path("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
         )
         source = next((path for path in candidates if path.exists()), None)
@@ -156,7 +157,7 @@ class LedgerApp:
         subprocess.run([xset, "+fp", str(font_dir)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run([xset, "fp", "rehash"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         families = {family.casefold(): family for family in tkfont.families(self.root)}
-        for family_name in ("wenquanyi zen hei", "droid sans fallback"):
+        for family_name in ("wenquanyi zen hei", "noto sans cjk jp", "noto sans cjk sc", "droid sans fallback"):
             if family_name in families:
                 self.ui_font = families[family_name]
                 break
