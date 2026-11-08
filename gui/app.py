@@ -134,6 +134,7 @@ class LedgerApp:
         candidates = (
             PROJECT_DIR / ".cache" / "tk-fonts" / "wqy-zenhei.ttc",
             Path("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"),
+            Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc"),
             Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
             Path("/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
         )
@@ -151,13 +152,20 @@ class LedgerApp:
                 target.symlink_to(source)
             except OSError:
                 return
-        if not (font_dir / "fonts.dir").exists():
+        font_index = font_dir / "fonts.dir"
+        index_needs_refresh = not font_index.exists()
+        if not index_needs_refresh:
+            try:
+                index_needs_refresh = target.name not in font_index.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                index_needs_refresh = True
+        if index_needs_refresh:
             subprocess.run([mkfontscale, str(font_dir)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run([mkfontdir, str(font_dir)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run([xset, "+fp", str(font_dir)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run([xset, "fp", "rehash"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         families = {family.casefold(): family for family in tkfont.families(self.root)}
-        for family_name in ("wenquanyi zen hei", "noto sans cjk jp", "noto sans cjk sc", "droid sans fallback"):
+        for family_name in ("wenquanyi zen hei", "noto sans cjk jp medium", "noto sans cjk jp", "noto sans cjk sc", "droid sans fallback"):
             if family_name in families:
                 self.ui_font = families[family_name]
                 break
@@ -169,24 +177,24 @@ class LedgerApp:
         style.configure("App.TFrame", background=palette["background"])
         style.configure("Surface.TFrame", background=palette["surface"])
         style.configure("SurfaceAlt.TFrame", background=palette["surface_alt"])
-        style.configure("TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 12))
-        style.configure("Card.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 12))
-        style.configure("Muted.TLabel", background=palette["background"], foreground=palette["muted"], font=(self.ui_font, 12))
-        style.configure("CardMuted.TLabel", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 12))
-        style.configure("Alt.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 12))
-        style.configure("AltMuted.TLabel", background=palette["surface_alt"], foreground=palette["muted"], font=(self.ui_font, 12))
+        style.configure("TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 13))
+        style.configure("Card.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 13))
+        style.configure("Muted.TLabel", background=palette["background"], foreground=palette["muted"], font=(self.ui_font, 13))
+        style.configure("CardMuted.TLabel", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 13))
+        style.configure("Alt.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 13))
+        style.configure("AltMuted.TLabel", background=palette["surface_alt"], foreground=palette["muted"], font=(self.ui_font, 13))
         style.configure("AltMoney.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 26, "bold"))
-        style.configure("Heading.TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 18, "bold"))
-        style.configure("CardHeading.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 13, "bold"))
+        style.configure("Heading.TLabel", background=palette["background"], foreground=palette["text"], font=(self.ui_font, 20, "bold"))
+        style.configure("CardHeading.TLabel", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 15, "bold"))
         style.configure("Money.TLabel", background=palette["surface_alt"], foreground=palette["text"], font=(self.ui_font, 25, "bold"))
-        style.configure("Accent.TButton", background=palette["green"], foreground="#ffffff", padding=(15, 9), borderwidth=0, font=(self.ui_font, 12, "bold"))
+        style.configure("Accent.TButton", background=palette["green"], foreground="#ffffff", padding=(15, 9), borderwidth=0, font=(self.ui_font, 14, "bold"))
         style.map("Accent.TButton", background=[("active", palette["green_dark"]), ("pressed", palette["green_dark"])])
-        style.configure("Quiet.TButton", background=palette["surface"], foreground=palette["text"], padding=(12, 8), borderwidth=0, font=(self.ui_font, 12))
+        style.configure("Quiet.TButton", background=palette["surface"], foreground=palette["text"], padding=(12, 8), borderwidth=0, font=(self.ui_font, 13))
         style.map("Quiet.TButton", background=[("active", palette["surface_alt"])])
-        style.configure("TRadiobutton", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 12))
-        style.configure("TEntry", font=(self.ui_font, 12), padding=5)
-        style.configure("Treeview", background=palette["surface"], fieldbackground=palette["surface"], foreground=palette["text"], rowheight=46, borderwidth=0, font=(self.ui_font, 12))
-        style.configure("Treeview.Heading", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 12, "bold"), relief="flat")
+        style.configure("TRadiobutton", background=palette["surface"], foreground=palette["text"], font=(self.ui_font, 13))
+        style.configure("TEntry", font=(self.ui_font, 13), padding=5)
+        style.configure("Treeview", background=palette["surface"], fieldbackground=palette["surface"], foreground=palette["text"], rowheight=50, borderwidth=0, font=(self.ui_font, 13))
+        style.configure("Treeview.Heading", background=palette["surface"], foreground=palette["muted"], font=(self.ui_font, 13, "bold"), relief="flat")
         style.map("Treeview", background=[("selected", "#dcefe0")], foreground=[("selected", palette["text"])])
         style.configure("Horizontal.TProgressbar", background=palette["green"], troughcolor="#dfe8df", borderwidth=0, lightcolor=palette["green"], darkcolor=palette["green"])
 
@@ -202,8 +210,8 @@ class LedgerApp:
         sidebar = tk.Frame(shell, bg=self.colors["sidebar"], width=230)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
-        tk.Label(sidebar, text="随手记", bg=self.colors["sidebar"], fg="#ffffff", font=(self.ui_font, 26, "bold")).pack(anchor="w", padx=26, pady=(34, 2))
-        tk.Label(sidebar, text="离线个人支出", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 12)).pack(anchor="w", padx=28, pady=(0, 30))
+        tk.Label(sidebar, text="随手记", bg=self.colors["sidebar"], fg="#ffffff", font=(self.ui_font, 28, "bold")).pack(anchor="w", padx=26, pady=(34, 2))
+        tk.Label(sidebar, text="离线个人支出", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 13)).pack(anchor="w", padx=28, pady=(0, 30))
         add_button = tk.Button(
             sidebar,
             text="＋  记一笔",
@@ -217,7 +225,7 @@ class LedgerApp:
             highlightthickness=0,
             overrelief="flat",
             cursor="hand2",
-            font=(self.ui_font, 13, "bold"),
+            font=(self.ui_font, 14, "bold"),
             padx=14,
             pady=12,
         )
@@ -243,15 +251,15 @@ class LedgerApp:
                 highlightthickness=0,
                 overrelief="flat",
                 cursor="hand2",
-                font=(self.ui_font, 12),
+                font=(self.ui_font, 13),
                 padx=12,
                 pady=11,
             )
             button.pack(fill="x", padx=12, pady=2)
             self.nav_buttons[key] = button
         tk.Frame(sidebar, bg=self.colors["sidebar"]).pack(fill="both", expand=True)
-        tk.Label(sidebar, text="Ubuntu 试用版", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 10)).pack(anchor="w", padx=28, pady=(0, 4))
-        tk.Label(sidebar, text="数据保存在本地", bg=self.colors["sidebar"], fg="#8eada0", font=(self.ui_font, 10)).pack(anchor="w", padx=28, pady=(0, 24))
+        tk.Label(sidebar, text="Ubuntu 试用版", bg=self.colors["sidebar"], fg=self.colors["sidebar_muted"], font=(self.ui_font, 11)).pack(anchor="w", padx=28, pady=(0, 4))
+        tk.Label(sidebar, text="数据保存在本地", bg=self.colors["sidebar"], fg="#8eada0", font=(self.ui_font, 11)).pack(anchor="w", padx=28, pady=(0, 24))
 
         content = ttk.Frame(shell, style="App.TFrame", padding=(32, 26, 32, 28))
         content.pack(side="left", fill="both", expand=True)
@@ -297,7 +305,7 @@ class LedgerApp:
     def _build_detail_tab(self) -> None:
         controls = self._card(self.detail_tab)
         controls.pack(fill="x", pady=(0, 14))
-        ttk.Label(controls, text="查看范围", style="Card.TLabel", font=(self.ui_font, 12, "bold")).pack(side="left")
+        ttk.Label(controls, text="查看范围", style="Card.TLabel", font=(self.ui_font, 13, "bold")).pack(side="left")
         ttk.Radiobutton(controls, text="单日", variable=self.range_var, value="day", command=self.refresh_detail).pack(side="left", padx=(14, 0))
         ttk.Radiobutton(controls, text="整月", variable=self.range_var, value="month", command=self.refresh_detail).pack(side="left")
         ttk.Label(controls, text="日期", style="CardMuted.TLabel").pack(side="left", padx=(26, 4))
@@ -354,7 +362,7 @@ class LedgerApp:
     def _build_stats_tab(self) -> None:
         top = self._card(self.stats_tab)
         top.pack(fill="x", pady=(0, 14))
-        ttk.Label(top, text="统计月份", style="Card.TLabel", font=(self.ui_font, 12, "bold")).pack(side="left")
+        ttk.Label(top, text="统计月份", style="Card.TLabel", font=(self.ui_font, 13, "bold")).pack(side="left")
         ttk.Entry(top, textvariable=self.month_var, width=10).pack(side="left", padx=6)
         ttk.Button(top, text="刷新统计", style="Quiet.TButton", command=self.refresh_stats).pack(side="left")
         self.stats_total_var = tk.StringVar(value="¥0.00")
@@ -390,7 +398,7 @@ class LedgerApp:
         ttk.Entry(form, textvariable=self.budget_input_var, width=12).grid(row=1, column=1, sticky="w", padx=8)
         ttk.Button(form, text="保存预算", style="Accent.TButton", command=self.save_budget).grid(row=1, column=2, padx=8)
         self.budget_status_var = tk.StringVar(value="尚未设置预算")
-        ttk.Label(card, textvariable=self.budget_status_var, style="CardHeading.TLabel", font=(self.ui_font, 15)).grid(row=2, column=0, columnspan=3, sticky="w", pady=(24, 8))
+        ttk.Label(card, textvariable=self.budget_status_var, style="CardHeading.TLabel", font=(self.ui_font, 17)).grid(row=2, column=0, columnspan=3, sticky="w", pady=(24, 8))
         self.budget_progress = ttk.Progressbar(card, orient="horizontal", length=520, mode="determinate", maximum=100)
         self.budget_progress.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         self.budget_hint_var = tk.StringVar(value="")
