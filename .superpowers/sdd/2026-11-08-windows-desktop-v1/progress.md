@@ -9,9 +9,10 @@
 
 ## Progress
 
-- [x] Task 1 — Windows domain/storage adapter (tests and implementation complete)
-- [ ] Task 2 — PySide6 shell and details page
+- [x] Task 1 — Windows domain/storage adapter (commit 125950c; 12 Python tests pass)
+- [x] Task 2 — PySide6 shell and details page (tests and offscreen screenshot verified)
 - [ ] Task 3 — Stats, budget, categories, and import workflows
 - [ ] Task 4 — Windows packaging and GitHub Actions
 - [ ] Task 5 — Final verification and delivery notes
 Task 1: complete (commits 8717737..8717737, tests: python3 -m unittest windows_app.test_domain windows_app.test_storage -v → OK)
+Task 2: complete (commits 125950c..125950c, tests: env QT_QPA_PLATFORM=offscreen .venv-windows/bin/python -m unittest windows_app.test_domain windows_app.test_storage windows_app.test_ui -v → OK)
