@@ -6,3 +6,6 @@ data/
 __pycache__/
 *.py[cod]
 .cache/
+.venv-windows/
+build/
+dist/
