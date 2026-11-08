@@ -64,7 +64,7 @@ if [[ "$action" == check ]]; then
     run_local_tests
     python_bin="${MINIPROJECT_PYTHON:-/home/zhangxxx/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3}"
     PYTHONPATH="$project_dir/gui" "$python_bin" -m unittest "$project_dir/gui/test_app.py" -v
-    cjpm run
+    "$project_dir/target/release/bin/main" snapshot >/dev/null
 elif [[ "$action" == test-local ]]; then
     run_local_tests "$@"
 elif [[ "$action" == gui-test ]]; then
