@@ -1,7 +1,7 @@
 # 开源鸿蒙第二次培训作业
 
 本次 Mini Project 的第一版目标是离线使用、以人民币记账的个人支出 App。
-当前版本已经实现仓颉业务核心、真实本地保存和 Ubuntu 图形试用界面。
+当前交付目标是 Windows 10/11 x64 桌面版：使用 PySide6 构建界面，使用本地 TSV 文件保存数据，GitHub Actions 生成可试用的 Windows 压缩包。
 
 第一轮开发以 [PRD.md](PRD.md) 为需求与验收依据，视觉参考位于 `docs/assets/ui-concept-v1.png`。
 
@@ -10,14 +10,35 @@
 第一版不包含用户登录或注册。打开应用即可使用，记账数据保存在本地。
 
 - 每日支出记录，支持修改与删除账单。
-- 记账入口使用显眼的大号“＋”：Ubuntu 桌面版位于左侧栏，移动端设计稿位于底部中间；点击后先弹出大类列表，选好大类后输入金额，并可在备注中说明具体小类。
+- 记账入口使用显眼的大号“＋”：Windows 桌面版位于左侧栏；点击后先弹出大类列表，选好大类后输入金额，并可在备注中说明具体小类。
 - 自定义二级分类：大类、小类均可新增和重命名，自建大类下也可以添加小类。
 - 按日期、月份查看账单，并提供单日支出总结和月度统计。
 - 设置月度预算，查看已用金额与剩余预算。
 - 本地保存数据，关闭应用后仍可继续查看。
 
-目标使用平台为 Windows、Android 和 iOS，Ubuntu 用于开发、检查和改善。
-本轮实际验证的是 Ubuntu 上的仓颉工程和 Tk 图形界面；Windows、Android、iOS 的 UI 与安装包仍需后续适配，不能把当前 Ubuntu Demo 视为已完成的多平台安装包。
+最终交付只保留 Windows 版本。Ubuntu 上的仓颉工程和 Tk 界面作为业务规则与旧版数据的参考实现，不作为最终试用入口。
+
+## Windows 版试用
+
+在 GitHub Actions 的 `Windows desktop build` 工作流中下载 `suishouji-windows-x64` artifact，解压后双击 `Suishouji.exe` 即可运行。它不需要安装 Python，也不需要启动仓颉服务。
+
+Windows 版首次打开会创建空账本，并自动准备“餐饮、交通、购物、学习”四个大类。数据默认保存在 `%APPDATA%\\Suishouji\\ledger.tsv`。左侧“导入旧账本”可以手动选择已有的 schema 1 TSV 文件；文件解析成功后才会替换当前账本，取消或解析失败会保留原数据。
+
+Windows 版目前覆盖明细、统计、预算、分类、备注显示、编辑、删除和本地持久化。未填写备注时明细显示大类，填写备注时只显示备注。
+
+## Windows 源码开发
+
+在 Windows 机器上安装 Python 3.12 后执行：
+
+```powershell
+py -3.12 -m venv .venv
+.venv\\Scripts\\python -m pip install -r requirements-windows.txt
+$env:QT_QPA_PLATFORM = "offscreen"
+.venv\\Scripts\\python -m unittest discover -s windows_app -p "test_*.py" -v
+.venv\\Scripts\\python -m windows_app.main
+```
+
+Ubuntu 上可以执行 `./dev.sh windows-test` 做同一套离线测试；`./dev.sh windows-build` 只提示 Windows 构建入口，不会把 Ubuntu 构建结果冒充 Windows 安装包。
 
 ## 当前实现
 
@@ -92,14 +113,14 @@ cjpm run
 
 修改 `src/main.cj` 后运行作业即可查看结果。
 
-打开图形界面后，可以直接检查以下流程：
+打开 Windows 版后，可以直接检查以下流程：
 
 1. 点击左侧“＋ 记一笔”，选择“餐饮”。
 2. 输入 `18.00`、日期和备注“午餐 · 食堂盖饭”，保存。
 3. 在明细中选中记录，检查详情、编辑和删除确认。
 4. 在统计中切换月份，在预算中设置 `100.00`，检查已用、剩余和超支状态。
 5. 在分类中新增或重命名大类、小类，再次点击“＋”确认新大类立即可用。
-6. 关闭窗口后重新执行 `./dev.sh gui`，确认数据仍在。
+6. 关闭窗口后重新打开 `Suishouji.exe`，确认数据仍在。
 
 ## 文件职责与测试
 
@@ -108,12 +129,15 @@ cjpm run
 | `src/main.cj` | 仓颉命令协议入口 |
 | `src/environment_test.cj` | 检查管道语法、Option 缺失值、异常处理和测试框架 |
 | `gui/app.py` | Ubuntu Tk 图形试用界面 |
+| `windows_app/` | Windows PySide6 客户端、业务适配层和自动化测试 |
+| `packaging/windows.spec` | PyInstaller Windows 构建入口 |
+| `.github/workflows/windows-build.yml` | Windows runner 构建并上传 zip artifact |
 | `cjpm.toml` | 模块名称、SDK 版本说明、产物类型与依赖 |
 | `cjpm.lock` | CJPM 生成的依赖锁定信息，应随源码保留 |
 | `env.sh` | 加载 SDK 并检查编译器版本 |
 | `dev.sh` | 统一的编译、运行、测试入口 |
 
-测试覆盖环境语法、金额与日期边界、分类重名、预算超支、TSV 编解码和命令协议。`./dev.sh test-local` 会在临时目录编译后逐包直接执行，适合当前受限会话；普通 Ubuntu 终端也可以执行 `./dev.sh test` 使用完整 CJPM 调度器。
+测试覆盖环境语法、金额与日期边界、分类重名、预算超支、TSV 编解码和命令协议；Windows 客户端测试覆盖统计、预算、分类、导入和 Qt 离屏界面。`./dev.sh windows-test` 可在 Ubuntu 上运行 Windows 客户端测试，`./dev.sh test-local` 会在临时目录编译后逐包直接执行仓颉测试。
 按真实职责需要拆分子包，并为跨包使用的声明添加相应的 `public` 和 `import`。
 
 ## SDK 路径变更
@@ -138,10 +162,9 @@ export CANGJIE_HOME="/你的SDK目录/cangjie"
 
 ## 已知限制与下一步
 
-- 当前图形界面使用 Python Tk，只在 Ubuntu 24.04.5 LTS 上验证；仓颉业务核心和协议可以继续复用。
-- Windows、Android、iOS 的 UI 绑定、打包、权限和安装包尚未验证，需要基于目标平台可用的官方 UI 方案分别适配。
-- 当前金额和日期错误会在表单附近或弹窗中显示；跨进程并发写入和数据迁移将在后续版本增加。
-- 下一步优先完成移动端 UI 方案核对、平台构建链验证，再复用本地业务协议或替换为平台原生持久化适配层。
+- Windows v1 通过 GitHub Actions 的 `windows-latest` runner 生成 zip，当前没有安装器、代码签名或自动更新。
+- Android 和 iOS 不在本次交付范围内；Ubuntu Tk 界面只保留为历史参考入口。
+- 当前金额和日期错误会在表单附近显示；跨进程并发写入仍未支持。
 功能开发时用真实变更记录历史，不必为凑数量拆分提交。
 项目作者说明与许可证应在发布方式确定后补充。
 

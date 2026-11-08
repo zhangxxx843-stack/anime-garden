@@ -18,10 +18,12 @@ case "$action" in
             '  check   检查版本、依赖、编译、测试和运行' \
             '  gui     构建并打开 Ubuntu Tk 图形界面' \
             '  gui-test 运行图形界面协议解析测试' \
+            '  windows-test 运行 Windows PySide6 客户端测试（Ubuntu 上仅做离线检查）' \
+            '  windows-build Windows 安装包由 GitHub Actions 构建' \
             '  clean   清理 CJPM 构建产物'
         exit 0
         ;;
-    build|run|test|test-local|clean|gui|gui-test) ;;
+    build|run|test|test-local|clean|gui|gui-test|windows-test|windows-build) ;;
     check)
         if (( $# > 0 )); then
             printf 'check 不接受额外参数。\n' >&2
@@ -33,6 +35,27 @@ case "$action" in
         exit 2
         ;;
 esac
+
+if [[ "$action" == windows-test ]]; then
+    if [[ $# -gt 0 ]]; then
+        printf 'windows-test 不接受额外参数。\n' >&2
+        exit 2
+    fi
+    if [[ -n "${MINIPROJECT_WINDOWS_PYTHON:-}" ]]; then
+        windows_python="$MINIPROJECT_WINDOWS_PYTHON"
+    elif [[ -x "$project_dir/.venv-windows/bin/python" ]]; then
+        windows_python="$project_dir/.venv-windows/bin/python"
+    else
+        windows_python="python3"
+    fi
+    env QT_QPA_PLATFORM=offscreen "$windows_python" -m unittest discover -s "$project_dir/windows_app" -p 'test_*.py' -v
+    exit 0
+fi
+
+if [[ "$action" == windows-build ]]; then
+    printf '%s\n' 'Windows 构建在 GitHub Actions 的 windows-latest runner 上执行。推送 main 后可在 Actions 下载 suishouji-windows-x64 artifact。'
+    exit 0
+fi
 
 source "$project_dir/env.sh"
 cd -- "$project_dir"
