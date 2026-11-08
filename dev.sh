@@ -16,10 +16,12 @@ case "$action" in
             '  test    运行单元测试' \
             '  test-local  编译并逐包运行测试，适合当前受限会话' \
             '  check   检查版本、依赖、编译、测试和运行' \
+            '  gui     构建并打开 Ubuntu Tk 图形界面' \
+            '  gui-test 运行图形界面协议解析测试' \
             '  clean   清理 CJPM 构建产物'
         exit 0
         ;;
-    build|run|test|test-local|clean) ;;
+    build|run|test|test-local|clean|gui|gui-test) ;;
     check)
         if (( $# > 0 )); then
             printf 'check 不接受额外参数。\n' >&2
@@ -60,9 +62,18 @@ if [[ "$action" == check ]]; then
     cjpm check
     cjpm build
     run_local_tests
+    python_bin="${MINIPROJECT_PYTHON:-/home/zhangxxx/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3}"
+    PYTHONPATH="$project_dir/gui" "$python_bin" -m unittest "$project_dir/gui/test_app.py" -v
     cjpm run
 elif [[ "$action" == test-local ]]; then
     run_local_tests "$@"
+elif [[ "$action" == gui-test ]]; then
+    python_bin="${MINIPROJECT_PYTHON:-/home/zhangxxx/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3}"
+    PYTHONPATH="$project_dir/gui" exec "$python_bin" -m unittest "$project_dir/gui/test_app.py" -v "$@"
+elif [[ "$action" == gui ]]; then
+    cjpm build
+    python_bin="${MINIPROJECT_PYTHON:-/home/zhangxxx/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3}"
+    PYTHONPATH="$project_dir/gui" exec "$python_bin" "$project_dir/gui/app.py" "$@"
 else
     exec cjpm "$action" "$@"
 fi
