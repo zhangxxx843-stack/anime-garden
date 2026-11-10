@@ -1,4 +1,0 @@
-if [[ -f "$HOME/.bashrc" ]]; then
-    source "$HOME/.bashrc"
-fi
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/env.sh"

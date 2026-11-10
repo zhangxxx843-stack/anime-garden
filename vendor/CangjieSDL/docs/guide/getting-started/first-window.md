@@ -1,0 +1,146 @@
+# 打开首个 SDL 窗口
+
+## 你将完成
+
+本页从一个真正的空目录开始，创建 `cjpm.toml` 和 `src/main.cj`，最后显示一个 720×480 的窗口。窗口中有标题、说明文字、圆角卡片和状态圆点；拖动边框改变尺寸后，卡片仍按当前逻辑尺寸绘制；点击关闭按钮后程序释放渲染器和窗口并回到终端。完整程序没有省略包声明、导入、`main`、事件循环或关闭边界。
+
+## 准备项目
+
+安装仓颉 SDK 1.0.5，并确认 `cjpm --version` 可运行。以下布局中，仓库目录名是 `CangjieSDL`，包名是 `sdl`：
+
+```text
+workspace/
+├─ CangjieSDL/
+└─ hello_sdl/
+```
+
+在 `workspace` 中创建应用：
+
+```text
+cjpm init --name guide_examples --type=executable --path hello_sdl
+cd hello_sdl
+```
+
+在生成的 `cjpm.toml` 中添加依赖，保留 `[package]` 配置：
+
+```toml
+[dependencies]
+sdl = { path = "../CangjieSDL" }
+```
+
+Windows x64 在应用目录执行以下 PowerShell 命令，让当前会话找到三个运行库：
+
+```powershell
+$sdlRuntime = (Resolve-Path ../CangjieSDL/.sdl3).Path
+$env:PATH = "$sdlRuntime;$env:PATH"
+```
+
+确认目录中有 `SDL3.dll`、`SDL3_ttf.dll`、`SDL3_image.dll`。其他平台需要匹配系统与架构的库，见[运行库部署](../how-to/deploy-native-runtime.md)。第一次运行应在可创建窗口的桌面会话完成。
+
+## 先建立一个模型
+
+`WindowSpec` 描述窗口初始条件，`SdlWindow` 拥有原生窗口和渲染器，`UiEvent` 把系统消息转换为仓颉枚举，`Renderer` 负责每帧画面。每帧先处理完已有事件，再由 `renderFrame` 完成场景开始、绘制、离屏解析和提交。绘制抛出异常时，它会恢复渲染目标、缩放和裁剪状态，但不提交残缺画面。窗口放进 `try (...)` 资源块，正常和异常退出都会关闭。
+
+## 操作步骤
+
+1. 完成项目创建、依赖配置与运行库准备。
+2. 把下面完整程序保存为 `src/main.cj`。标准事件入口在返回 `WindowResized`/DPI 事件前自动刷新窗口快照；绘制时每帧读取 `window.width` 与 `window.height`，因此不是只在启动时计算一次。
+3. 先执行 `cjpm build`，通过后运行 `cjpm run`。看到窗口后拖动右下角，确认背景和卡片继续完整显示。
+4. 点击窗口关闭按钮。只有进程返回且退出码为 0，首个生命周期闭环才完成。
+
+## 完整程序
+
+```cangjie verify role=complete profile=gui-visual
+package guide_examples
+
+import sdl.{Color, FontSizes, Pen, Rect, SdlWindow, UiEvent, WindowSpec}
+
+main(): Unit {
+    try (window = SdlWindow(WindowSpec("SDL 首个窗口", 720, 480), hidden: true)) {
+        var firstFrame = true
+        var running = true
+        while (running) {
+            var current = window.pollEvent()
+            while (let Some(event) <- current) {
+                match (event) {
+                    case UiEvent.Quit => running = false
+                    case UiEvent.WindowCloseRequested => running = false
+                    case _ => ()
+                }
+                current = window.pollEvent()
+            }
+
+            if (!running) { break }
+
+            let width = Float32(window.width)
+            let height = Float32(window.height)
+            let card = Rect(32.0, 32.0, width - 64.0, height - 64.0)
+            let renderer = window.renderer
+            renderer.renderFrame(width, height, Color.rgb(15, 23, 42)) {
+                renderer.fillRoundedRectGradient(
+                    card,
+                    22.0,
+                    Color.rgb(30, 64, 175),
+                    Color.rgb(14, 116, 144)
+                )
+                renderer.strokeRoundedRect(
+                    card,
+                    22.0,
+                    Pen(width: 2.0, color: Color.rgba(165, 243, 252, 210))
+                )
+                renderer.text(
+                    "你好，SDL3",
+                    64.0,
+                    74.0,
+                    Color.rgb(255, 255, 255),
+                    pointSize: FontSizes.DISPLAY
+                )
+                renderer.text(
+                    "拖动窗口边框，然后点击关闭",
+                    66.0,
+                    132.0,
+                    Color.rgb(207, 250, 254),
+                    pointSize: FontSizes.BODY
+                )
+                renderer.fillCircle(76.0, height - 82.0, 8.0, Color.rgb(74, 222, 128))
+                renderer.text("事件循环正在运行", 96.0, height - 94.0, Color.rgb(220, 252, 231))
+            }
+            if (firstFrame) {
+                window.show()
+                firstFrame = false
+                continue // 立即进入下一次完整绘制，不在首帧显示后延迟
+            }
+            window.delay(UInt32(8))
+        }
+    }
+}
+```
+
+窗口以 `hidden: true` 创建，首帧提交后调用 `show()`，下一轮立即重绘以恢复可能失效的后备缓冲。
+
+这个程序只在一个地方拥有窗口，也只通过 `window.renderer` 取得渲染器。`UiEvent.Quit` 只改变循环状态，不在事件分支中手动释放资源；退出 `while` 后由资源块统一关闭。
+
+## 确认结果
+
+![首个 SDL 窗口的真实运行截图：渐变卡片、中文标题、状态点和系统标题栏均清晰可见](../_snapshots/first-window.png)
+
+先看终端：`cjpm build` 和 `cjpm run` 启动阶段没有依赖或 DLL 错误。再看窗口：深色背景上应出现蓝青渐变卡片、白色标题、浅色说明和绿色状态点；卡片边缘没有明显锯齿，中文没有方框。拖大窗口后卡片宽高随之改变，底部状态点仍在窗口内。最后关闭窗口，终端应恢复提示符，进程退出码为 0。上图是参考画面；字体和边缘细节可能随平台、字体与渲染后端变化，应以本机运行结果验收。
+
+## 接着试一试
+
+在绘制体中读取 `window.pixelDensity()`，把结果显示在卡片右上角，并用 `pushClip` 与 `popClip` 限制文字区域。重新运行后，文字不应越过裁剪矩形；把窗口移到缩放不同的显示器时，密度值可能变化。它是运行时设备信息，不应硬编码为 1 或 2。
+
+## 如果没有成功
+
+编译器找不到 `sdl` 时先核对 `cjpm.toml` 路径；启动时报找不到 SDL DLL 时不要修改导入，按[构建、动态库与字体排错](../troubleshooting/build-runtime-fonts.md)检查运行库。窗口出现但中文不可见，优先确认系统有支持的 UI 字体。窗口能显示却拖动后卡片异常，检查是否通过标准 poll/wait 入口处理事件并每帧读取当前宽高；若绕过封装直接接原生事件，才需要手工 `refreshDisplayMetrics()`。程序不返回但窗口仍能响应，是事件循环的正常行为；关闭窗口即可。
+
+## 相关 API
+
+- [`WindowSpec`](../../api/sdl/WindowSpec.md)：标题、逻辑尺寸、高 DPI、缩放、垂直同步和超采样初值。
+- [`SdlWindow`](../../api/sdl/SdlWindow.md)：窗口、事件、尺寸、计时与资源生命周期。
+- [`UiEvent`](../../api/sdl/UiEvent.md)：退出、缩放、键鼠、文本和拖放事件。
+- [`Renderer`](../../api/sdl/Renderer.md)：场景、图形、文字、裁剪和截图。
+
+## 下一步
+
+继续阅读[窗口与事件循环](../concepts/window-events-lifecycle.md)，把“能运行”推进到“能解释每帧为什么按这个顺序运行”。
