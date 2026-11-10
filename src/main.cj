@@ -1,75 +1,33 @@
-package miniproject
+package xin_xuan_glass_probe
 
-import miniproject.service.*
-import miniproject.storage.*
-import miniproject.utils.*
-import std.fs.*
+import cui.*
+import std.env.getCommandLine
+import std.fs.Path
+import xin_xuan_glass_probe.application.CatalogController
+import xin_xuan_glass_probe.storage.{LocalStore, defaultDataRoot}
 
-const DefaultStoragePath = "data/ledger.tsv"
-const DefaultTimestamp = "2026-11-08T00:00:00"
-
-func required(args: Array<String>, index: Int64, label: String): String {
-    if (index >= args.size) {
-        throw Exception("缺少参数：${label}")
-    }
-    return args[index]
+private func argument(name: String): ?String {
+    let args = getCommandLine()
+    for (i in 0..args.size - 1) { if (args[i] == name) { return Some(args[i + 1]) } }
+    None
 }
 
-func loadService(path: String): LedgerService {
-    let service = LedgerService(loadState(path))
-    service.seedDefaults(DefaultTimestamp)
-    return service
-}
-
-func saveAndReturn(path: String, service: LedgerService, message: String): String {
-    saveState(path, service.state)
-    return "OK\t${message}"
-}
-
-public func executeCommand(args: Array<String>, path: String): String {
-    if (args.size == 0) {
-        throw Exception("缺少命令")
-    }
-    let command = args[0]
-    let service = loadService(path)
-    match (command) {
-        case "init" => saveAndReturn(path, service, "initialized")
-        case "snapshot" =>
-            if (!exists(path)) {
-                saveState(path, service.state)
-            }
-            serializeState(service.state)
-        case "add-category" =>
-            let id = service.addCategory(required(args, 1, "名称"), required(args, 2, "父分类 ID"), required(args, 3, "时间"))
-            saveAndReturn(path, service, id)
-        case "rename-category" =>
-            service.renameCategory(required(args, 1, "分类 ID"), required(args, 2, "名称"), required(args, 3, "时间"))
-            saveAndReturn(path, service, "renamed")
-        case "add-expense" =>
-            let amount = parseAmountInCents(required(args, 1, "金额"))
-            let id = service.addExpense(amount, required(args, 2, "分类 ID"), required(args, 3, "日期"), required(args, 4, "备注"), required(args, 5, "时间"))
-            saveAndReturn(path, service, id)
-        case "update-expense" =>
-            let amount = parseAmountInCents(required(args, 2, "金额"))
-            service.updateExpense(required(args, 1, "账单 ID"), amount, required(args, 3, "分类 ID"), required(args, 4, "日期"), required(args, 5, "备注"), required(args, 6, "时间"))
-            saveAndReturn(path, service, "updated")
-        case "delete-expense" =>
-            service.deleteExpense(required(args, 1, "账单 ID"))
-            saveAndReturn(path, service, "deleted")
-        case "set-budget" =>
-            let amount = parseAmountInCents(required(args, 2, "预算"))
-            service.setBudget(required(args, 1, "月份"), amount, required(args, 3, "时间"))
-            saveAndReturn(path, service, "budget-saved")
-        case _ => throw Exception("未知命令：${command}")
-    }
-}
-
-main(args: Array<String>): Int64 {
-    try {
-        println(executeCommand(args, DefaultStoragePath))
-        return 0
-    } catch (error: Exception) {
-        println("ERROR\t${error.message}")
-        return 1
-    }
+main(): Unit {
+    diagnosticStage("G00_MAIN_ENTERED")
+    configureShoppingFonts()
+    diagnosticStage("G05_FONT_CONFIGURED")
+    let assets = argument("--assets-dir").getOrDefault({=> Path(ApplicationPaths.basePath().getOrDefault({=> "."})).join(Path("assets")).toString()})
+    // Explicit isolated data roots support verification without touching real user data.
+    let root = argument("--test-data-dir").getOrDefault({=> defaultDataRoot()})
+    let model = CatalogController(LocalStore(root), assets)
+    let vm = CatalogViewModel(model)
+    let materials = Backdrop(assetRoot: assets)
+    diagnosticStage("G30_BEFORE_WINDOW")
+    let app = DesktopApp(WindowSpec("心选购物", 760, 420), theme: shoppingTheme())
+    diagnosticStage("G40_WINDOW_CREATED")
+    app.manage(materials)
+    app.setMinimumSize(640, 400)
+    app.setCloseRequestHandler(Some({request => vm.requestClose(request)}))
+    app.run { shoppingView(vm, materials) }
+    println("NORMAL_EXIT")
 }
