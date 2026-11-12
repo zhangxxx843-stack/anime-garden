@@ -1,0 +1,94 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,cp,rm,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+test('all eight pages keep their existing controls while receiving motion backgrounds',async()=>{
+ const app=await readFile(path.join(root,'public','app.js'),'utf8');
+ const css=await readFile(path.join(root,'public','styles.css'),'utf8');
+ for(const [page,file] of Object.entries({home:'home',search:'search',tools:'tools',forum:'forum',help:'help',plan:'plan',watch:'watch',settings:'settings'}))assert.match(app,new RegExp(`${page}.*?/media/${file}\\.mp4`));
+ for(const label of ['开始寻找动漫','去茶园坐坐','知你所想','服务工具','饭后茶园','集思广益','追番计划','在线动漫'])assert.match(app,new RegExp(label));
+ assert.match(css,/\.page-motion\b/);
+ assert.match(css,/prefers-reduced-motion:\s*reduce/);
+});
+test('music controls preserve playback settings without changing page controls',async()=>{
+ const app=await readFile(path.join(root,'public','app.js'),'utf8');
+ const css=await readFile(path.join(root,'public','styles.css'),'utf8');
+ assert.match(app,/id="background-audio"/);
+ assert.match(app,/id="music-toggle"/);
+ assert.match(app,/id="music-volume"/);
+ assert.match(app,/garden-music/);
+ assert.match(app,/\.18/);
+ assert.match(app,/prefers-reduced-motion/);
+ assert.match(css,/\.music-control\b/);
+ for(const label of ['登录 / 注册','庭院设置'])assert.match(app,new RegExp(label));
+});
+test('top music add entry safely previews a chosen filename without uploading it',async()=>{
+ const app=await readFile(path.join(root,'public','app.js'),'utf8');
+ const css=await readFile(path.join(root,'public','styles.css'),'utf8');
+ for(const id of ['music-add','music-add-panel','music-file-pick','music-file','music-add-submit'])assert.match(app,new RegExp(`id="${id}"`));
+ assert.match(app,/aria-expanded="false"/);
+ assert.match(app,/setAttribute\('aria-expanded'/);
+ assert.match(app,/\.textContent=file\?\.name/);
+ assert.match(app,/filePick\.onclick=\(\)=>fileInput\.click\(\)/);
+ assert.match(app,/e\.key==='Escape'/);
+ assert.match(app,/closest\('\.music-add'/);
+ assert.match(app,/功能开发中/);
+ assert.match(app,/id="mobile-account"/);
+ assert.doesNotMatch(app,/readAsDataURL|arrayBuffer\(\)|URL\.createObjectURL\(file/);
+ assert.match(css,/\.music-add-panel\b/);
+ assert.match(css,/@media\(max-width:760px\).*\.music-add-panel/s);
+ assert.match(css,/@media\(max-width:420px\).*\.actions>#account\{display:none\}/s);
+});
+test('anime menu interactions enhance existing actions without replacing them',async()=>{
+ const app=await readFile(path.join(root,'public','app.js'),'utf8');
+ const css=await readFile(path.join(root,'public','styles.css'),'utf8');
+ assert.match(app,/function playButtonSound/);
+ assert.match(app,/new Audio\('\/media\/button-click\.wav\?v=soft-pop'\)/);
+ assert.match(app,/buttonSound\.volume=\.35/);
+ assert.match(app,/MutationObserver/);
+ assert.match(app,/anime-action/);
+ assert.match(app,/closest\('\.anime-action/);
+ assert.match(css,/\.anime-action\b/);
+ assert.match(css,/\.topnav a:hover/);
+ assert.match(css,/Manga sticker appearance/);
+ assert.match(css,/border:2px solid var\(--ink\)/);
+ assert.match(css,/border:1px dashed rgba\(81,56,47/);
+ assert.match(css,/box-shadow:-4px 5px 0 #e5b999/);
+ assert.match(css,/prefers-reduced-motion:\s*reduce/);
+ for(const label of ['开始寻找动漫','去茶园坐坐','登录 / 注册','添加追番','添加授权视频'])assert.match(app,new RegExp(label));
+});
+test('local API, security boundaries, and disk persistence survive restart',async()=>{
+ const temp=await mkdtemp(path.join(tmpdir(),'anime-garden-')),port=33219,base='http://127.0.0.1:'+port;let child;
+ async function start(){child=spawn(process.execPath,[path.join(temp,'server.mjs')],{env:{...process.env,PORT:String(port),OPENAI_API_KEY:'',SUPABASE_URL:'',SUPABASE_ANON_KEY:''},stdio:['ignore','pipe','pipe']});await new Promise((resolve,reject)=>{const t=setTimeout(()=>reject(new Error('server timeout')),10000);child.stdout.once('data',()=>{clearTimeout(t);resolve();});child.once('exit',code=>{clearTimeout(t);reject(new Error('server exited '+code));});});}
+ async function stop(){if(child&&!child.killed){const ended=once(child,'exit');child.kill();await ended;}}
+ try{await cp(path.join(root,'server.mjs'),path.join(temp,'server.mjs'));await cp(path.join(root,'public'),path.join(temp,'public'),{recursive:true});await start();
+ assert.equal((await fetch(base)).status,200);
+ const homeVideo=await fetch(base+'/media/home.mp4',{headers:{Range:'bytes=0-31'}});
+ assert.equal(homeVideo.status,206);
+ assert.equal(homeVideo.headers.get('content-type'),'video/mp4');
+ assert.match(homeVideo.headers.get('content-range'),/^bytes 0-31\/\d+$/);
+ assert.equal((await homeVideo.arrayBuffer()).byteLength,32);
+ for(const name of ['search','tools','forum','help','plan','watch','settings'])assert.equal((await fetch(base+'/media/'+name+'.mp4',{headers:{Range:'bytes=0-0'}})).status,206);
+ const music=await fetch(base+'/media/background.mp4',{headers:{Range:'bytes=0-31'}});
+ assert.equal(music.status,206);assert.equal(music.headers.get('content-type'),'video/mp4');assert.equal((await music.arrayBuffer()).byteLength,32);
+ const click=await fetch(base+'/media/button-click.wav',{headers:{Range:'bytes=0-31'}});
+ assert.equal(click.status,206);assert.equal(click.headers.get('content-type'),'audio/wav');assert.equal((await click.arrayBuffer()).byteLength,32);
+ const cfg=await (await fetch(base+'/api/config')).json();assert.equal(cfg.ai,false);assert.equal('OPENAI_API_KEY' in cfg,false);
+ const original=await(await fetch(base+'/api/personal')).json();
+ const changed={...original,plans:[{id:'test',title:'重启后仍在的动漫',day:3,time:'20:00',source:'测试',url:'',episode:7}],favorites:['bili']};
+ const r=await fetch(base+'/api/personal',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(changed)});assert.equal(r.status,200);
+ assert.equal((await fetch(base+'/api/personal',{method:'PUT',headers:{Origin:'https://evil.example','Content-Type':'application/json'},body:JSON.stringify(original)})).status,403);
+ assert.equal((await fetch(base+'/api/personal',{method:'PUT',body:'{}'})).status,400);
+ assert.equal((await fetch(base+'/api/personal',{method:'PUT',body:JSON.stringify({...changed,plans:[{title:'broken'}]})})).status,400);
+ assert.deepEqual(await(await fetch(base+'/api/personal')).json(),changed);
+ assert.equal((await fetch(base+'/.env')).status,404);assert.equal((await fetch(base+'/data/personal.json')).status,404);
+ assert.equal((await fetch(base+'/api/identify',{method:'POST',body:JSON.stringify({query:'测试动漫'})})).status,503);
+ await stop();await start();const restored=await(await fetch(base+'/api/personal')).json();assert.deepEqual(restored,changed);
+ assert.deepEqual(JSON.parse(await readFile(path.join(temp,'data','personal.json'),'utf8')),changed);
+ }finally{await stop();await rm(temp,{recursive:true,force:true});}
+});

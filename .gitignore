@@ -1,10 +1,4 @@
-target/
-dist/
-**/target/
-**/__pycache__/
-*.pyc
-*.log
-glass-last-stage.txt
 .env
-*.so
-*.so.*
+.superpowers/
+data/*
+!data/.gitkeep

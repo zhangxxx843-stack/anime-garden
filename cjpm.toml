@@ -1,9 +1,0 @@
-[package]
-cjc-version = "1.0.5"
-name = "xin_xuan_glass_probe"
-version = "0.1.0"
-output-type = "executable"
-compile-option = "-O2"
-
-[dependencies]
-cui = { path = "vendor/CangjieGUI" }
