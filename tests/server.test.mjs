@@ -27,6 +27,13 @@ test('music controls preserve playback settings without changing page controls',
  assert.match(css,/\.music-control\b/);
  for(const label of ['登录 / 注册','庭院设置'])assert.match(app,new RegExp(label));
 });
+test('Windows launcher prefers the bundled portable Node runtime',async()=>{
+ const launcher=await readFile(path.join(root,'Start-Anime-Garden.cmd'),'utf8');
+ assert.match(launcher,/runtime\\node\.exe/);
+ assert.match(launcher,/NODE_EXE/);
+ assert.match(launcher,/where node/);
+ assert.match(launcher,/--env-file-if-exists=\.env server\.mjs/);
+});
 test('top music add entry safely previews a chosen filename without uploading it',async()=>{
  const app=await readFile(path.join(root,'public','app.js'),'utf8');
  const css=await readFile(path.join(root,'public','styles.css'),'utf8');

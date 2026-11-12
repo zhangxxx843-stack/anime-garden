@@ -1,9 +1,9 @@
 Anime Garden - Windows Quick Start
 ==================================
 
-1. Install Node.js 22.13 or newer from https://nodejs.org/
-2. Extract the complete ZIP file to a normal folder.
-3. Double-click Start-Anime-Garden.cmd.
+1. Extract the complete portable ZIP file to a normal folder.
+2. Make sure anime-garden\runtime\node.exe exists.
+3. Double-click Start-Anime-Garden.cmd. No Node.js installation is needed.
 4. Keep the command window open while using the app.
 5. Open http://127.0.0.1:3210/#home if the browser does not open automatically.
 
