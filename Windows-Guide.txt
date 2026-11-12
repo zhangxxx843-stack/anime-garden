@@ -1,0 +1,22 @@
+Anime Garden - Windows Quick Start
+==================================
+
+1. Install Node.js 22.13 or newer from https://nodejs.org/
+2. Extract the complete ZIP file to a normal folder.
+3. Double-click Start-Anime-Garden.cmd.
+4. Keep the command window open while using the app.
+5. Open http://127.0.0.1:3210/#home if the browser does not open automatically.
+
+Continue development
+--------------------
+Open the complete anime-garden folder in VS Code.
+
+- Page logic: public/app.js
+- Page styles: public/styles.css
+- Local server: server.mjs
+- Videos and sounds: public/media
+- Start from a terminal: npm start
+- Run checks: npm test
+
+Do not double-click public/index.html. The local Node.js server must be running.
+The .env file and data/personal.json are private local files and are not included.
