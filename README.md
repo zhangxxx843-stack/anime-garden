@@ -4,7 +4,7 @@
 
 ## 打开
 
-Windows 便携转接包自带 `runtime/node.exe`，解压后双击 **Start-Anime-Garden.cmd** 即可，不需要单独安装 Node.js。脚本会自动打开 **http://127.0.0.1:3210/#home**；保留命令窗口，关闭窗口即可停止应用。GitHub 源码包不含运行时，直接从源码启动时仍需安装 Node.js 22.13 或更新版本。
+Windows 便携转接包和 GitHub 仓库都自带 `runtime/node.exe`，下载 ZIP 并完整解压后，双击 **Start-Anime-Garden.cmd** 即可，不需要单独安装 Node.js。脚本会自动打开 **http://127.0.0.1:3210/#home**；保留命令窗口，关闭窗口即可停止应用。其他操作系统可安装 Node.js 22.13 或更新版本后执行 `npm start`。
 
 开发时可在项目目录执行 `npm start`，修改 `public/app.js`、`public/styles.css` 或 `server.mjs` 后刷新浏览器查看。没有第三方运行依赖，无需 npm install。执行 `npm test` 可运行全部检查。不要直接双击 `public/index.html`。
 
